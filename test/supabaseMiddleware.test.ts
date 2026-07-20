@@ -5,6 +5,8 @@ type MockUser = { id: string }
 const mocks = vi.hoisted(() => {
   const state = {
     currentUser: null as MockUser | null,
+    billingStatus: null as string | null,
+    billingError: null as { message: string } | null,
   }
 
   const nextResponseMock = {
@@ -26,6 +28,13 @@ const mocks = vi.hoisted(() => {
       auth: {
         getUser: vi.fn(async () => ({ data: { user: state.currentUser } })),
       },
+      rpc: vi.fn(async (fnName: string) => {
+        if (fnName === 'is_instance_initialized') return { data: true, error: null }
+        if (fnName === 'get_org_billing_status') {
+          return { data: state.billingStatus, error: state.billingError }
+        }
+        return { data: null, error: null }
+      }),
     })),
   }
 
@@ -73,6 +82,8 @@ function makeRequest(pathname: string) {
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.state.currentUser = null
+  mocks.state.billingStatus = null
+  mocks.state.billingError = null
 
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'http://example.supabase.local')
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key')
@@ -141,5 +152,82 @@ describe('updateSession (Proxy/Supabase)', () => {
     const [urlArg] = mocks.nextResponseMock.redirect.mock.calls[0]
     expect(urlArg).toMatchObject({ pathname: '/dashboard' })
     expect(res).toMatchObject({ kind: 'redirect' })
+  })
+
+  describe('billing guard', () => {
+    it.each(['active', 'trialing'])(
+      'não bloqueia rota protegida quando status é "%s"',
+      async (billingStatus) => {
+        mocks.state.currentUser = { id: 'user-1' }
+        mocks.state.billingStatus = billingStatus
+        const req = makeRequest('/dashboard')
+
+        const res = await updateSession(req)
+
+        expect(mocks.nextResponseMock.redirect).not.toHaveBeenCalled()
+        expect(res).toMatchObject({ kind: 'next' })
+      }
+    )
+
+    it.each(['trial_expired', 'past_due', 'canceled', 'pending_payment'])(
+      'redireciona para /billing quando status é "%s"',
+      async (billingStatus) => {
+        mocks.state.currentUser = { id: 'user-1' }
+        mocks.state.billingStatus = billingStatus
+        const req = makeRequest('/dashboard')
+
+        const res = await updateSession(req)
+
+        expect(mocks.nextResponseMock.redirect).toHaveBeenCalledTimes(1)
+        const [urlArg] = mocks.nextResponseMock.redirect.mock.calls[0]
+        expect(urlArg).toMatchObject({ pathname: '/billing' })
+        expect(res).toMatchObject({ kind: 'redirect' })
+      }
+    )
+
+    it('não entra em loop ao acessar /billing com status bloqueante', async () => {
+      mocks.state.currentUser = { id: 'user-1' }
+      mocks.state.billingStatus = 'past_due'
+      const req = makeRequest('/billing')
+
+      const res = await updateSession(req)
+
+      expect(mocks.nextResponseMock.redirect).not.toHaveBeenCalled()
+      expect(res).toMatchObject({ kind: 'next' })
+    })
+
+    it('não bloqueia rotas públicas mesmo com status bloqueante', async () => {
+      mocks.state.currentUser = { id: 'user-1' }
+      mocks.state.billingStatus = 'past_due'
+      const req = makeRequest('/precos')
+
+      const res = await updateSession(req)
+
+      expect(mocks.nextResponseMock.redirect).not.toHaveBeenCalled()
+      expect(res).toMatchObject({ kind: 'next' })
+    })
+
+    it('falha aberta (sem redirect) quando a RPC de billing retorna erro', async () => {
+      mocks.state.currentUser = { id: 'user-1' }
+      mocks.state.billingStatus = null
+      mocks.state.billingError = { message: 'boom' }
+      const req = makeRequest('/dashboard')
+
+      const res = await updateSession(req)
+
+      expect(mocks.nextResponseMock.redirect).not.toHaveBeenCalled()
+      expect(res).toMatchObject({ kind: 'next' })
+    })
+
+    it('falha aberta quando não há assinatura (status null)', async () => {
+      mocks.state.currentUser = { id: 'user-1' }
+      mocks.state.billingStatus = null
+      const req = makeRequest('/dashboard')
+
+      const res = await updateSession(req)
+
+      expect(mocks.nextResponseMock.redirect).not.toHaveBeenCalled()
+      expect(res).toMatchObject({ kind: 'next' })
+    })
   })
 })

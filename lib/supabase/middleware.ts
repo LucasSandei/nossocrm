@@ -103,5 +103,28 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url)
     }
 
+    // -----------------------------------------------------------------------
+    // Billing guard: organizacoes sem assinatura valida (trial expirado,
+    // pagamento atrasado/pendente ou cancelada) sao redirecionadas para
+    // /billing. Nao bloqueia rotas publicas/auth/setup/install nem a
+    // propria /billing (evita loop de redirect).
+    // Falha aberta em caso de erro na RPC, mesmo padrao do setup guard acima.
+    // -----------------------------------------------------------------------
+    const isBillingRoute = pathname === '/billing' || pathname.startsWith('/billing/')
+    const BLOCKING_BILLING_STATUSES = new Set(['trial_expired', 'past_due', 'canceled', 'pending_payment'])
+
+    if (user && !isPublicRoute && !isAuthRoute && !isSetupRoute && !isInstallRoute && !isBillingRoute) {
+        try {
+            const { data: billingStatus, error: billingError } = await supabase.rpc('get_org_billing_status')
+            if (!billingError && billingStatus && BLOCKING_BILLING_STATUSES.has(billingStatus)) {
+                const url = request.nextUrl.clone()
+                url.pathname = '/billing'
+                return NextResponse.redirect(url)
+            }
+        } catch {
+            // ignore - fail open
+        }
+    }
+
     return supabaseResponse
 }
