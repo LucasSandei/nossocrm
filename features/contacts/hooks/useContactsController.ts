@@ -12,6 +12,7 @@ import {
   useDeleteContact,
   useBulkDeleteContacts,
   useBulkUpdateContactsStage,
+  useContactsAllIds,
   useBulkDeleteCompanies,
   useCreateCompany,
   useUpdateCompany,
@@ -43,6 +44,7 @@ export const useContactsController = () => {
   const deleteContactMutation = useDeleteContact();
   const bulkDeleteContactsMutation = useBulkDeleteContacts();
   const bulkUpdateStageMutation = useBulkUpdateContactsStage();
+  const contactsAllIdsMutation = useContactsAllIds();
   const checkHasDealsMutation = useContactHasDeals();
   const createCompanyMutation = useCreateCompany();
   const updateCompanyMutation = useUpdateCompany();
@@ -330,12 +332,27 @@ export const useContactsController = () => {
     });
   };
 
-  const toggleSelectAll = () => {
-    const ids = viewMode === 'people' ? filteredContacts.map(c => c.id) : filteredCompanies.map(c => c.id);
-    if (selectedIds.size === ids.length) {
+  // "Selecionar todos": para contatos (viewMode 'people'), seleciona TODOS os
+  // contatos que casam com o filtro/etapa atual — inclusive os de páginas
+  // seguintes — não só os da página visível.
+  const toggleSelectAll = async () => {
+    if (viewMode === 'companies') {
+      const ids = filteredCompanies.map(c => c.id);
+      setSelectedIds(prev => (prev.size === ids.length ? new Set() : new Set(ids)));
+      return;
+    }
+
+    if (selectedIds.size > 0) {
+      // Já tem seleção (parcial ou total): desmarca tudo.
       setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(ids));
+      return;
+    }
+
+    try {
+      const allIds = await contactsAllIdsMutation.mutateAsync(serverFilters);
+      setSelectedIds(new Set(allIds));
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Erro ao selecionar todos os contatos.', 'error');
     }
   };
 
@@ -778,6 +795,7 @@ export const useContactsController = () => {
     selectedIds,
     toggleSelect,
     toggleSelectAll,
+    isSelectingAll: contactsAllIdsMutation.isPending,
     clearSelection,
 
     // Sorting

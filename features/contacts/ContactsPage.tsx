@@ -171,6 +171,8 @@ export const ContactsPage: React.FC = () => {
                 selectedIds={controller.selectedIds}
                 toggleSelect={controller.toggleSelect}
                 toggleSelectAll={controller.toggleSelectAll}
+                totalCount={controller.totalCount}
+                isSelectingAll={controller.isSelectingAll}
                 getCompanyName={controller.getCompanyName}
                 updateContact={controller.updateContact}
                 convertContactToDeal={controller.convertContactToDeal}

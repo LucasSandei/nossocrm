@@ -425,6 +425,58 @@ export const contactsService = {
   },
 
   /**
+   * Busca os IDs de TODOS os contatos que casam com os filtros (sem paginação).
+   *
+   * Usado por "selecionar todos" na aba Contatos — permite selecionar todos os
+   * contatos de uma etapa/filtro, incluindo os que estão em páginas seguintes,
+   * sem precisar buscar os dados completos de cada um.
+   *
+   * @param filters - Mesmos filtros server-side usados em getAllPaginated.
+   * @returns Promise com array de IDs ou erro.
+   */
+  async getAllIds(filters?: ContactsServerFilters): Promise<{ data: string[]; error: Error | null }> {
+    try {
+      if (!supabase) {
+        return { data: [], error: new Error('Supabase não configurado') };
+      }
+
+      let query = supabase
+        .from('contacts')
+        .select('id')
+        .is('deleted_at', null);
+
+      if (filters) {
+        if (filters.search && filters.search.trim()) {
+          const searchTerm = filters.search.trim();
+          query = query.or(`name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
+        }
+        if (filters.stage && filters.stage !== 'ALL') {
+          query = query.eq('stage', filters.stage);
+        }
+        if (filters.status && filters.status !== 'ALL') {
+          if (filters.status === 'RISK') {
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            query = query.eq('status', 'ACTIVE').lt('last_purchase_date', thirtyDaysAgo.toISOString());
+          } else {
+            query = query.eq('status', filters.status);
+          }
+        }
+        if (filters.dateStart) query = query.gte('created_at', filters.dateStart);
+        if (filters.dateEnd) query = query.lte('created_at', filters.dateEnd);
+        if (filters.clientCompanyId) query = query.eq('client_company_id', filters.clientCompanyId);
+      }
+
+      // Safety cap: evita payload gigante em orgs com base muito grande.
+      const { data, error } = await query.limit(20000);
+      if (error) return { data: [], error };
+      return { data: (data || []).map(r => r.id), error: null };
+    } catch (e) {
+      return { data: [], error: e as Error };
+    }
+  },
+
+  /**
    * Cria um novo contato.
    * 
    * @param contact - Dados do contato (sem id e createdAt).
@@ -522,11 +574,19 @@ export const contactsService = {
         return { error: new Error('Supabase não configurado') };
       }
       if (ids.length === 0) return { error: null };
-      const { error } = await supabase
-        .from('contacts')
-        .update({ stage, updated_at: new Date().toISOString() })
-        .in('id', ids);
-      return { error };
+
+      // Chunked: um único `.in(id, [...])` com muitos IDs (ex.: "selecionar
+      // todos" numa base grande) pode gerar uma URL longa demais para o PostgREST.
+      const chunkSize = 200;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const { error } = await supabase
+          .from('contacts')
+          .update({ stage, updated_at: new Date().toISOString() })
+          .in('id', chunk);
+        if (error) return { error };
+      }
+      return { error: null };
     } catch (e) {
       return { error: e as Error };
     }

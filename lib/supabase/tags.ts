@@ -147,11 +147,18 @@ export const contactTagsService = {
       tags.map(tag => ({ contact_id: contactId, tag_id: tag.id, organization_id: orgId }))
     );
 
-    // ignoreDuplicates evita erro de PK duplicada quando o contato já tem a etiqueta.
-    const { error } = await supabase
-      .from('contact_tags')
-      .upsert(rows, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
-    return { error };
+    // Em lotes: "selecionar todos" numa base grande pode gerar milhares de
+    // linhas de uma vez (contatos x etiquetas).
+    const chunkSize = 500;
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize);
+      // ignoreDuplicates evita erro de PK duplicada quando o contato já tem a etiqueta.
+      const { error } = await supabase
+        .from('contact_tags')
+        .upsert(chunk, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
+      if (error) return { error };
+    }
+    return { error: null };
   },
 
   /** Remove uma etiqueta específica de um contato. */

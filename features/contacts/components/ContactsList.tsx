@@ -79,6 +79,9 @@ interface ContactsListProps {
     selectedIds: Set<string>;
     toggleSelect: (id: string) => void;
     toggleSelectAll: () => void;
+    /** Total de contatos que casam com o filtro atual (todas as páginas) — usado para saber se "todos" já estão selecionados. */
+    totalCount?: number;
+    isSelectingAll?: boolean;
     getCompanyName: (id: string | undefined | null) => string;
     updateContact: (id: string, data: Partial<Contact>) => void;
     convertContactToDeal: (id: string) => void;
@@ -142,6 +145,8 @@ export const ContactsList: React.FC<ContactsListProps> = ({
     selectedIds,
     toggleSelect,
     toggleSelectAll,
+    totalCount,
+    isSelectingAll = false,
     getCompanyName,
     updateContact,
     convertContactToDeal,
@@ -155,12 +160,15 @@ export const ContactsList: React.FC<ContactsListProps> = ({
     duplicateContactIds,
     onAddContact,
 }) => {
-    const activeListIds = viewMode === 'people'
-        ? filteredContacts.map(c => c.id)
-        : filteredCompanies.map(c => c.id);
-    const allSelected = activeListIds.length > 0 && selectedIds.size === activeListIds.length;
+    // Para contatos, "todos" considera o total que casa com o filtro (todas as
+    // páginas), não só a página visível — já que "selecionar todos" busca
+    // todos os IDs de uma vez (ver useContactsController.toggleSelectAll).
+    const totalSelectableCount = viewMode === 'people'
+        ? (totalCount ?? filteredContacts.length)
+        : filteredCompanies.length;
+    const allSelected = totalSelectableCount > 0 && selectedIds.size === totalSelectableCount;
 
-    const someSelected = selectedIds.size > 0 && selectedIds.size < activeListIds.length;
+    const someSelected = selectedIds.size > 0 && selectedIds.size < totalSelectableCount;
 
     // Performance: compute "contacts by company" once (avoids N filters per company row).
     const contactsByCompanyId = React.useMemo(() => {
@@ -188,13 +196,15 @@ export const ContactsList: React.FC<ContactsListProps> = ({
                         <thead className="bg-slate-50/80 dark:bg-white/5 border-b border-slate-200 dark:border-white/5">
                             <tr>
                                 <th scope="col" className="w-12 px-6 py-4">
-                                    <input 
-                                        type="checkbox" 
+                                    <input
+                                        type="checkbox"
                                         checked={allSelected}
+                                        disabled={isSelectingAll}
                                         ref={(el) => { if (el) el.indeterminate = someSelected; }}
                                         onChange={toggleSelectAll}
-                                        aria-label={allSelected ? 'Desmarcar todos os contatos' : 'Selecionar todos os contatos'}
-                                        className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 dark:bg-white/5 dark:border-white/10" 
+                                        aria-label={allSelected ? 'Desmarcar todos os contatos' : `Selecionar todos os ${totalSelectableCount} contatos`}
+                                        title={isSelectingAll ? 'Selecionando todos os contatos...' : undefined}
+                                        className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 dark:bg-white/5 dark:border-white/10 disabled:opacity-50"
                                     />
                                 </th>
                                 {onSort ? (

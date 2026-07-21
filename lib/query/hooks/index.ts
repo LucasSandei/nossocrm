@@ -38,6 +38,7 @@ export {
   useDeleteContact,
   useBulkDeleteContacts,
   useContactHasDeals,
+  useContactsAllIds,
   usePrefetchContact,
   type ContactsFilters,
 } from './useContactsQuery';

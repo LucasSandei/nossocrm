@@ -705,6 +705,20 @@ export const useContactHasDeals = () => {
   });
 };
 
+/**
+ * Busca todos os IDs de contatos que casam com os filtros atuais (sem paginação).
+ * Usado por "selecionar todos" — inclui contatos de páginas seguintes.
+ */
+export const useContactsAllIds = () => {
+  return useMutation({
+    mutationFn: async (filters?: ContactsServerFilters) => {
+      const { data, error } = await contactsService.getAllIds(filters);
+      if (error) throw error;
+      return data;
+    },
+  });
+};
+
 // ============ COMPANIES MUTATIONS ============
 
 /**
