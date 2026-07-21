@@ -40,12 +40,28 @@ export const ContactSearchCombobox: React.FC<ContactSearchComboboxProps> = ({
     return new Map(companies.map(c => [c.id, c]));
   }, [companies]);
 
-  // Filtrar contatos baseado no termo de busca
+  // Contatos criados mais recentemente — sugeridos quando o campo está vazio.
+  const recentContacts = useMemo(() => {
+    return [...contacts]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 3);
+  }, [contacts]);
+
+  // Filtrar contatos baseado no termo de busca, ordenados por qualidade do match
+  // (prefixo do nome > início de palavra no nome > contém em qualquer posição).
   const filteredContacts = useMemo(() => {
-    if (!searchTerm.trim()) return [];
-    
+    if (!searchTerm.trim()) return recentContacts;
+
     const term = searchTerm.toLowerCase().trim();
-    
+
+    const matchRank = (contact: Contact): number => {
+      const name = contact.name?.toLowerCase() || '';
+      if (name.startsWith(term)) return 0;
+      if (name.split(/\s+/).some(word => word.startsWith(term))) return 1;
+      if (name.includes(term)) return 2;
+      return 3; // match só por email/telefone
+    };
+
     return contacts
       .filter(contact => {
         const nameMatch = contact.name?.toLowerCase().includes(term);
@@ -53,8 +69,9 @@ export const ContactSearchCombobox: React.FC<ContactSearchComboboxProps> = ({
         const phoneMatch = contact.phone?.replace(/\D/g, '').includes(term.replace(/\D/g, ''));
         return nameMatch || emailMatch || phoneMatch;
       })
+      .sort((a, b) => matchRank(a) - matchRank(b))
       .slice(0, 8); // Limitar a 8 resultados
-  }, [contacts, searchTerm]);
+  }, [contacts, searchTerm, recentContacts]);
 
   // Resetar highlight quando resultados mudam
   useEffect(() => {
@@ -148,7 +165,7 @@ export const ContactSearchCombobox: React.FC<ContactSearchComboboxProps> = ({
             setSearchTerm(e.target.value);
             setIsOpen(true);
           }}
-          onFocus={() => searchTerm && setIsOpen(true)}
+          onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
@@ -156,11 +173,16 @@ export const ContactSearchCombobox: React.FC<ContactSearchComboboxProps> = ({
       </div>
 
       {/* Dropdown de resultados */}
-      {isOpen && searchTerm.trim() && (
+      {isOpen && (
         <div
           ref={listRef}
           className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150"
         >
+          {!searchTerm.trim() && filteredContacts.length > 0 && (
+            <div className="px-3 pt-2 pb-1 text-[10px] font-bold text-slate-400 uppercase">
+              Criados recentemente
+            </div>
+          )}
           {filteredContacts.length > 0 ? (
             <div className="max-h-64 overflow-y-auto">
               {filteredContacts.map((contact, index) => {

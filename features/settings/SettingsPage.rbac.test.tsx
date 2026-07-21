@@ -93,6 +93,16 @@ vi.mock('./components/ai/AIAgentConfigSection', () => ({
   ),
 }))
 
+// Evita depender de QueryClientProvider (usa hooks Supabase reais para persistir
+// campos personalizados de contato) ao renderizar a aba Geral neste teste de RBAC.
+vi.mock('./components/ContactCustomFieldsManager', () => ({
+  ContactCustomFieldsManager: () => (
+    <div>
+      <h3>Campos Personalizados de Contato</h3>
+    </div>
+  ),
+}))
+
 import SettingsPage from './SettingsPage'
 import { useAuth } from '@/context/AuthContext'
 

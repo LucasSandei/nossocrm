@@ -226,6 +226,16 @@ export const queryKeys = {
      * Org-level + user settings query keys.
      */
     orgSettings: createQueryKeys('orgSettings'),
+
+    /**
+     * Tags catalog (org-wide), used by contacts (contact_tags) and deals (deals.tags).
+     */
+    tags: createQueryKeys('tags'),
+
+    /**
+     * Custom field definitions scoped to contacts (entity_type = 'contact').
+     */
+    contactCustomFieldDefinitions: createQueryKeys('contactCustomFieldDefinitions'),
 };
 
 /**

@@ -134,9 +134,13 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                 (profile?.email || user?.email || '').split('@')[0] ||
                 'Eu';
 
+            // Nome do negócio é opcional: se vazio, usa o nome do contato como título do card.
+            const contactName = selectedContact?.name || newContactData.name || '';
+            const finalTitle = dealData.title.trim() || contactName;
+
             const deal: Deal = {
                 id: crypto.randomUUID(),
-                title: dealData.title,
+                title: finalTitle,
                 companyId: selectedCompany?.id || '',
                 contactId: selectedContact?.id || '',
                 boardId: activeBoardId || activeBoard.id,
@@ -368,12 +372,11 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
                         
                         <div className="space-y-3">
                             <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">Nome do Negócio *</label>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Nome do Negócio</label>
                                 <input
-                                    required
                                     type="text"
                                     className="w-full bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
-                                    placeholder="Ex: Contrato Anual - Acme"
+                                    placeholder="Ex: Contrato Anual - Acme (deixe em branco para usar o nome do contato)"
                                     value={dealData.title}
                                     onChange={e => setDealData(prev => ({ ...prev, title: e.target.value }))}
                                 />
@@ -402,7 +405,7 @@ export const CreateDealModal: React.FC<CreateDealModalProps> = ({
 
                     <button 
                         type="submit" 
-                        disabled={!hasContact || !dealData.title || isSubmitting}
+                        disabled={!hasContact || isSubmitting}
                         className="w-full bg-primary-600 hover:bg-primary-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-bold py-3 rounded-lg mt-2 shadow-lg shadow-primary-600/20 transition-all flex items-center justify-center gap-2"
                     >
                         {isSubmitting ? (

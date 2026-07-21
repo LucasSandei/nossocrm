@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useSettingsController } from './hooks/useSettingsController';
 import { TagsManager } from './components/TagsManager';
 import { CustomFieldsManager } from './components/CustomFieldsManager';
+import { ContactCustomFieldsManager } from './components/ContactCustomFieldsManager';
 import { ApiKeysSection } from './components/ApiKeysSection';
 import { WebhooksSection } from './components/WebhooksSection';
 import { McpSection } from './components/McpSection';
@@ -96,6 +97,8 @@ const GeneralSettings: React.FC<GeneralSettingsProps> = ({ hash, isAdmin }) => {
             onSaveField={controller.handleSaveField}
             onRemoveField={controller.removeCustomField}
           />
+
+          <ContactCustomFieldsManager />
         </>
       )}
 

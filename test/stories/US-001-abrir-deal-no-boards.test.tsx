@@ -32,44 +32,6 @@ vi.mock('@/context/ToastContext', () => ({
   useToast: () => ({ addToast: vi.fn() }),
 }));
 
-vi.mock('@tanstack/react-query', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@tanstack/react-query')>();
-  // Return the deal fixture for DEALS_VIEW_KEY (identified by enabled:false in DealDetailModal)
-  return {
-    ...actual,
-    useQuery: (options: { enabled?: boolean }) => {
-      if (options.enabled === false) {
-        return {
-          data: [{
-            id: 'deal-1',
-            title: 'Pequeno Chapéu',
-            value: 1000,
-            status: 'stage-1',
-            boardId: 'board-1',
-            contactId: 'contact-1',
-            companyName: 'Moreira Comércio',
-            contactName: 'Fulano',
-            contactEmail: 'fulano@example.com',
-            stageLabel: 'Novo',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            probability: 50,
-            priority: 'medium',
-            owner: { name: 'Eu', avatar: '' },
-            tags: [],
-            items: [],
-            customFields: {},
-            isWon: false,
-            isLost: false,
-          }],
-          isLoading: false,
-        };
-      }
-      return { data: [], isLoading: false };
-    },
-  };
-});
-
 vi.mock('@/lib/query/hooks', () => ({
   useMoveDealSimple: () => ({ moveDeal: vi.fn() }),
   useContacts: () => ({ data: [], isLoading: false }),
@@ -83,6 +45,34 @@ vi.mock('@/lib/query/hooks', () => ({
   useCreateActivity: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useUpdateActivity: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useDeleteActivity: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useContactCustomFieldDefinitions: () => ({ data: [], isLoading: false }),
+  // DealDetailModal reads DEALS_VIEW_KEY via useDealsView (the real queryFn,
+  // shared with the Kanban) instead of a dummy useQuery — see DealDetailModal.tsx.
+  useDealsView: () => ({
+    data: [{
+      id: 'deal-1',
+      title: 'Pequeno Chapéu',
+      value: 1000,
+      status: 'stage-1',
+      boardId: 'board-1',
+      contactId: 'contact-1',
+      companyName: 'Moreira Comércio',
+      contactName: 'Fulano',
+      contactEmail: 'fulano@example.com',
+      stageLabel: 'Novo',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      probability: 50,
+      priority: 'medium',
+      owner: { name: 'Eu', avatar: '' },
+      tags: [],
+      items: [],
+      customFields: {},
+      isWon: false,
+      isLost: false,
+    }],
+    isLoading: false,
+  }),
 }));
 
 vi.mock('@/lib/query/hooks/useProductsQuery', () => ({

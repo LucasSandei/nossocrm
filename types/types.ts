@@ -174,6 +174,18 @@ export interface Contact {
 
   /** Quando true, o agente de IA não responde a este contato em nenhum canal. */
   aiPaused?: boolean;
+
+  /** Nomes das etiquetas aplicadas ao contato (catálogo compartilhado em public.tags). */
+  tags?: string[];
+
+  /** Valores dos campos personalizados do contato, chaveados por CustomFieldDefinition.key. */
+  customFields?: Record<string, string>;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  color?: string;
 }
 
 // ITEM 3: Produtos e Serviços
@@ -206,6 +218,8 @@ export interface CustomFieldDefinition {
   label: string;
   type: CustomFieldType;
   options?: string[]; // For select type
+  /** Entidade a que este campo pertence. Ausente/'deal' = comportamento legado (negócios). */
+  entityType?: 'deal' | 'contact';
 }
 
 // O Dinheiro/Oportunidade (O que vai no Kanban)

@@ -34,6 +34,7 @@ type ParsedRow = {
   status?: string;
   stage?: string;
   notes?: string;
+  tags?: string;
 };
 
 const HEADER_SYNONYMS: Record<keyof ParsedRow, string[]> = {
@@ -47,6 +48,7 @@ const HEADER_SYNONYMS: Record<keyof ParsedRow, string[]> = {
   status: ['status'],
   stage: ['stage', 'etapa', 'lifecycle stage', 'ciclo de vida', 'pipeline stage'],
   notes: ['notes', 'nota', 'notas', 'observacoes', 'observações', 'obs'],
+  tags: ['tags', 'etiquetas', 'labels'],
 };
 
 function buildHeaderIndex(headers: string[]) {
@@ -73,9 +75,10 @@ function buildHeaderIndex(headers: string[]) {
     status: find(HEADER_SYNONYMS.status),
     stage: find(HEADER_SYNONYMS.stage),
     notes: find(HEADER_SYNONYMS.notes),
+    tags: find(HEADER_SYNONYMS.tags),
   };
 
-  return mapping;
+  return { idx, mapping };
 }
 
 function getCell(row: string[], idx: number | undefined): string | undefined {
@@ -103,6 +106,12 @@ function normalizeStage(v: string | undefined): string | undefined {
   if (s === 'CUSTOMER' || s === 'CLIENTE') return 'CUSTOMER';
   if (s === 'OTHER' || s === 'OUTRO' || s === 'OUTROS') return 'OTHER';
   return undefined;
+}
+
+/** Etiquetas separadas por ";" — "novo lead;instagram" => ['novo lead', 'instagram']. */
+function parseTagsCell(v: string | undefined): string[] {
+  if (!v) return [];
+  return Array.from(new Set(v.split(';').map(t => t.trim()).filter(Boolean)));
 }
 
 export async function POST(req: Request) {
@@ -134,10 +143,54 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'CSV sem cabeçalho.' }, { status: 400 });
     }
 
-    const mapping = buildHeaderIndex(headers);
+    const { idx: headerIdx, mapping } = buildHeaderIndex(headers);
+
+    const supabase = await createClient();
+
+    // Auth check — must come before any data access
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('organization_id')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profile?.organization_id) {
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+    }
+
+    const orgId = profile.organization_id;
+
+    // Contact custom field definitions — colunas extras do CSV que baterem com
+    // uma `key` são gravadas em contacts.custom_fields (JSONB) em vez de
+    // caírem como coluna desconhecida.
+    const { data: customFieldDefs, error: customFieldsError } = await supabase
+      .from('custom_field_definitions')
+      .select('key')
+      .eq('organization_id', orgId)
+      .eq('entity_type', 'contact');
+
+    if (customFieldsError) {
+      return NextResponse.json({ error: customFieldsError.message }, { status: 400 });
+    }
+
+    const customFieldColumnIndexByKey = new Map<string, number>();
+    for (const def of (customFieldDefs || []) as Array<{ key: string }>) {
+      const colIdx = headerIdx.get(normalizeHeader(def.key));
+      if (colIdx !== undefined) customFieldColumnIndexByKey.set(def.key, colIdx);
+    }
 
     // Parse rows
-    const parsed: Array<{ rowNumber: number; data: ParsedRow }> = [];
+    const parsed: Array<{
+      rowNumber: number;
+      data: ParsedRow;
+      tagNames: string[];
+      customFields: Record<string, string>;
+    }> = [];
     const errors: Array<{ rowNumber: number; message: string }> = [];
 
     for (let i = 0; i < rows.length; i += 1) {
@@ -160,6 +213,12 @@ export async function POST(req: Request) {
         continue;
       }
 
+      const customFields: Record<string, string> = {};
+      for (const [key, colIdx] of customFieldColumnIndexByKey) {
+        const value = getCell(r, colIdx);
+        if (value !== undefined) customFields[key] = value;
+      }
+
       parsed.push({
         rowNumber,
         data: {
@@ -172,6 +231,8 @@ export async function POST(req: Request) {
           stage: normalizeStage(getCell(r, mapping.stage)),
           notes: getCell(r, mapping.notes),
         },
+        tagNames: parseTagsCell(getCell(r, mapping.tags)),
+        customFields,
       });
     }
 
@@ -184,26 +245,6 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-
-    const supabase = await createClient();
-
-    // Auth check — must come before any data access
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('organization_id')
-      .eq('id', user.id)
-      .single();
-
-    if (profileError || !profile?.organization_id) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
-    }
-
-    const orgId = profile.organization_id;
 
     // Companies: preload and optionally create missing ones
     const { data: companies, error: companiesError } = await supabase
@@ -245,6 +286,38 @@ export async function POST(req: Request) {
       }
     }
 
+    // Tags catalog: preload and create any tag name referenced in the CSV that
+    // doesn't exist yet in this org's catalog (public.tags).
+    const allTagNames = new Set<string>();
+    for (const p of parsed) for (const t of p.tagNames) allTagNames.add(t);
+
+    const tagIdByNameLower = new Map<string, string>();
+    if (allTagNames.size > 0) {
+      const { data: existingTags, error: tagsError } = await supabase
+        .from('tags')
+        .select('id,name')
+        .eq('organization_id', orgId);
+      if (tagsError) return NextResponse.json({ error: tagsError.message }, { status: 400 });
+      for (const t of (existingTags || []) as Array<{ id: string; name: string }>) {
+        tagIdByNameLower.set(t.name.toLowerCase(), t.id);
+      }
+
+      const missingTags = Array.from(allTagNames).filter(name => !tagIdByNameLower.has(name.toLowerCase()));
+      if (missingTags.length > 0) {
+        const { data: createdTags, error: createTagsError } = await supabase
+          .from('tags')
+          .upsert(
+            missingTags.map(name => ({ name, organization_id: orgId })),
+            { onConflict: 'name,organization_id', ignoreDuplicates: true }
+          )
+          .select('id,name');
+        if (createTagsError) return NextResponse.json({ error: createTagsError.message }, { status: 400 });
+        for (const t of (createdTags || []) as Array<{ id: string; name: string }>) {
+          tagIdByNameLower.set(t.name.toLowerCase(), t.id);
+        }
+      }
+    }
+
     // Existing contacts by email (batch)
     const emails = Array.from(
       new Set(
@@ -282,12 +355,21 @@ export async function POST(req: Request) {
     let updated = 0;
     let skipped = 0;
 
+    // contactId -> tag ids a aplicar após criar/atualizar o contato
+    const pendingTagAssignments: Array<{ contactId: string; tagIds: string[] }> = [];
+
+    const resolveTagIds = (names: string[]): string[] =>
+      names.map(n => tagIdByNameLower.get(n.toLowerCase())).filter((id): id is string => !!id);
+
     // Import in manageable chunks to reduce payload sizes
-    const insertBatch: Array<{ rowNumber: number; payload: Record<string, unknown> }> = [];
+    const insertBatch: Array<{ rowNumber: number; payload: Record<string, unknown>; tagNames: string[] }> = [];
     const flushInsert = async () => {
       if (!insertBatch.length) return;
       const payloads = insertBatch.map(i => i.payload);
-      const { error: insertError } = await supabase.from('contacts').insert(payloads);
+      const { data: insertedRows, error: insertError } = await supabase
+        .from('contacts')
+        .insert(payloads)
+        .select('id');
       if (insertError) {
         // If batch insert fails, mark all rows as errors (keep it simple for v1)
         for (const item of insertBatch) {
@@ -295,6 +377,13 @@ export async function POST(req: Request) {
         }
       } else {
         created += insertBatch.length;
+        // Postgres preserves row order for a plain multi-row INSERT ... VALUES RETURNING.
+        (insertedRows || []).forEach((row: { id: string }, i: number) => {
+          const tagNames = insertBatch[i]?.tagNames || [];
+          if (tagNames.length === 0) return;
+          const tagIds = resolveTagIds(tagNames);
+          if (tagIds.length > 0) pendingTagAssignments.push({ contactId: row.id, tagIds });
+        });
       }
       insertBatch.length = 0;
     };
@@ -306,7 +395,7 @@ export async function POST(req: Request) {
       const companyName = (p.data.company || '').trim();
       const companyId = companyName ? companyIdByName.get(normalizeHeader(companyName)) : undefined;
 
-      const base = {
+      const base: Record<string, unknown> = {
         name: p.data.name || '',
         email: p.data.email || null,
         phone: phoneE164 || null,
@@ -318,12 +407,15 @@ export async function POST(req: Request) {
         organization_id: orgId,
         updated_at: new Date().toISOString(),
       };
+      if (Object.keys(p.customFields).length > 0) {
+        base.custom_fields = p.customFields;
+      }
 
       const existingIds = email ? (contactIdsByEmail.get(email) || []) : [];
 
       if (mode === 'create_only') {
         // Always create, even if duplicates exist.
-        insertBatch.push({ rowNumber, payload: base });
+        insertBatch.push({ rowNumber, payload: base, tagNames: p.tagNames });
         if (insertBatch.length >= 200) await flushInsert();
         continue;
       }
@@ -348,19 +440,37 @@ export async function POST(req: Request) {
           errors.push({ rowNumber, message: updateError.message });
         } else {
           updated += 1;
+          if (p.tagNames.length > 0) {
+            const tagIds = resolveTagIds(p.tagNames);
+            if (tagIds.length > 0) pendingTagAssignments.push({ contactId: id, tagIds });
+          }
         }
         continue;
       }
 
       // No email match (or no email): create
-      insertBatch.push({ rowNumber, payload: base });
+      insertBatch.push({ rowNumber, payload: base, tagNames: p.tagNames });
       if (insertBatch.length >= 200) await flushInsert();
     }
 
     await flushInsert();
 
-    // Remove internal field from potential logs; not persisted in DB anyway (supabase ignores unknown)
-    // but we keep it only in memory; ok.
+    // Aplica as etiquetas em lote (upsert ignora duplicatas se o contato já tiver a tag)
+    if (pendingTagAssignments.length > 0) {
+      const rows = pendingTagAssignments.flatMap(({ contactId, tagIds }) =>
+        tagIds.map(tagId => ({ contact_id: contactId, tag_id: tagId, organization_id: orgId }))
+      );
+      const chunkSize = 500;
+      for (let i = 0; i < rows.length; i += chunkSize) {
+        const chunk = rows.slice(i, i + chunkSize);
+        const { error: contactTagsError } = await supabase
+          .from('contact_tags')
+          .upsert(chunk, { onConflict: 'contact_id,tag_id', ignoreDuplicates: true });
+        if (contactTagsError) {
+          errors.push({ rowNumber: 0, message: `Erro ao aplicar etiquetas: ${contactTagsError.message}` });
+        }
+      }
+    }
 
     return NextResponse.json({
       ok: true,
@@ -384,4 +494,3 @@ export async function POST(req: Request) {
     );
   }
 }
-

@@ -240,6 +240,20 @@ export {
   useDeleteProduct,
 } from './useProductsQuery';
 
+// Tags (shared catalog + contact assignment)
+export {
+  useTags,
+  useBulkAssignContactTags,
+} from './useTagsQuery';
+
+// Contact custom field definitions (entity_type = 'contact')
+export {
+  useContactCustomFieldDefinitions,
+  useCreateContactCustomFieldDefinition,
+  useUpdateContactCustomFieldDefinition,
+  useDeleteContactCustomFieldDefinition,
+} from './useContactCustomFieldsQuery';
+
 // Org Settings (user prefs + org AI config)
 export {
   useOrgSettings,

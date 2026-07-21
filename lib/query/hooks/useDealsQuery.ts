@@ -508,6 +508,11 @@ export const useDeleteDeal = () => {
 /**
  * Hook to add an item to a deal
  */
+// Recomputa o valor do deal a partir dos itens, espelhando dealsService.recalculateDealValue
+// (soma price * quantity de cada item) para manter o cache consistente com o banco.
+const sumItemsValue = (items: DealItem[]): number =>
+  items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
 export const useAddDealItem = () => {
   const queryClient = useQueryClient();
 
@@ -517,9 +522,17 @@ export const useAddDealItem = () => {
       if (error) throw error;
       return { dealId, item: data! };
     },
-    onSettled: (_data, _error, { dealId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.deals.detail(dealId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.deals.lists() });
+    onSuccess: ({ dealId, item }) => {
+      queryClient.setQueryData<DealView[]>(DEALS_VIEW_KEY, (old = []) =>
+        old.map(deal => {
+          if (deal.id !== dealId) return deal;
+          const items = [...deal.items, item];
+          return { ...deal, items, value: sumItemsValue(items) };
+        })
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
     },
   });
 };
@@ -536,9 +549,17 @@ export const useRemoveDealItem = () => {
       if (error) throw error;
       return { dealId, itemId };
     },
-    onSettled: (_data, _error, { dealId }) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.deals.detail(dealId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.deals.lists() });
+    onSuccess: ({ dealId, itemId }) => {
+      queryClient.setQueryData<DealView[]>(DEALS_VIEW_KEY, (old = []) =>
+        old.map(deal => {
+          if (deal.id !== dealId) return deal;
+          const items = deal.items.filter(i => i.id !== itemId);
+          return { ...deal, items, value: sumItemsValue(items) };
+        })
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
     },
   });
 };

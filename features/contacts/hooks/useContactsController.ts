@@ -161,6 +161,13 @@ export const useContactsController = () => {
     phone: '',
     role: '',
     companyName: '',
+    status: 'ACTIVE' as Contact['status'],
+    stage: '',
+    source: '' as NonNullable<Contact['source']> | '',
+    birthDate: '',
+    notes: '',
+    tags: [] as string[],
+    customFields: {} as Record<string, string>,
   });
   const [isSubmittingContact, setIsSubmittingContact] = useState(false);
 
@@ -177,7 +184,11 @@ export const useContactsController = () => {
       return;
     }
     setEditingContact(null);
-    setFormData({ name: '', email: '', phone: '', role: '', companyName: '' });
+    setFormData({
+      name: '', email: '', phone: '', role: '', companyName: '',
+      status: 'ACTIVE', stage: '', source: '', birthDate: '', notes: '',
+      tags: [], customFields: {},
+    });
     setIsModalOpen(true);
   };
 
@@ -190,6 +201,13 @@ export const useContactsController = () => {
       phone: contact.phone,
       role: contact.role || '',
       companyName: company?.name || '',
+      status: contact.status || 'ACTIVE',
+      stage: contact.stage || '',
+      source: contact.source || '',
+      birthDate: contact.birthDate || '',
+      notes: contact.notes || '',
+      tags: contact.tags || [],
+      customFields: contact.customFields || {},
     });
     setIsModalOpen(true);
   };
@@ -420,6 +438,13 @@ export const useContactsController = () => {
             phone: normalizedPhone,
             role: formData.role,
             companyId: companyId,
+            status: formData.status,
+            stage: formData.stage || editingContact.stage,
+            source: formData.source || undefined,
+            birthDate: formData.birthDate || undefined,
+            notes: formData.notes,
+            tags: formData.tags,
+            customFields: formData.customFields,
           },
         },
         {
@@ -438,8 +463,13 @@ export const useContactsController = () => {
           phone: normalizedPhone,
           role: formData.role,
           companyId: companyId || '',
-          status: 'ACTIVE',
-          stage: ContactStage.LEAD,
+          status: formData.status || 'ACTIVE',
+          stage: formData.stage || ContactStage.LEAD,
+          source: formData.source || undefined,
+          birthDate: formData.birthDate || undefined,
+          notes: formData.notes,
+          tags: formData.tags,
+          customFields: formData.customFields,
           totalValue: 0,
         },
         {

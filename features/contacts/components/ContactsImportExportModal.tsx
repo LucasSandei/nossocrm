@@ -3,6 +3,7 @@ import { Download, Upload, FileDown } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/context/ToastContext';
 import { stringifyCsv, withUtf8Bom, type CsvDelimiter } from '@/lib/utils/csv';
+import { useContactCustomFieldDefinitions } from '@/lib/query/hooks';
 
 type Panel = 'export' | 'import';
 
@@ -69,9 +70,12 @@ export function ContactsImportExportModal(props: {
   // Export state
   const [isExporting, setIsExporting] = useState(false);
 
+  const { data: customFieldDefinitions = [] } = useContactCustomFieldDefinitions();
+
   const templateCsv = useMemo(() => {
     const d: CsvDelimiter = delimiter === 'auto' ? ';' : delimiter;
-    const header = ['name', 'email', 'phone', 'role', 'company', 'status', 'stage', 'notes'];
+    const customFieldKeys = customFieldDefinitions.map(f => f.key);
+    const header = ['name', 'email', 'phone', 'role', 'company', 'status', 'stage', 'notes', 'tags', ...customFieldKeys];
     const example = [
       'Maria Silva',
       'maria@empresa.com',
@@ -81,9 +85,11 @@ export function ContactsImportExportModal(props: {
       'ACTIVE',
       'LEAD',
       'Conheci em evento',
+      'novo lead;instagram',
+      ...customFieldKeys.map(() => ''),
     ];
     return withUtf8Bom(stringifyCsv([header, example], d));
-  }, [delimiter]);
+  }, [delimiter, customFieldDefinitions]);
 
   const handleDownloadTemplate = () => {
     downloadText('template-contatos.csv', templateCsv, 'text/csv;charset=utf-8');
@@ -264,6 +270,19 @@ export function ContactsImportExportModal(props: {
             >
               <Download size={16} /> Baixar template
             </button>
+          </div>
+
+          <div className="text-xs text-slate-500 dark:text-slate-400">
+            A coluna <code className="px-1 py-0.5 rounded bg-slate-200/60 dark:bg-white/10">tags</code> aceita
+            múltiplas etiquetas separadas por <code className="px-1 py-0.5 rounded bg-slate-200/60 dark:bg-white/10">;</code>
+            {' '}(ex: <code className="px-1 py-0.5 rounded bg-slate-200/60 dark:bg-white/10">novo lead;instagram</code>) — etiquetas
+            que ainda não existem são criadas automaticamente.
+            {customFieldDefinitions.length > 0 && (
+              <>
+                {' '}O template também inclui uma coluna para cada campo personalizado de contato:{' '}
+                {customFieldDefinitions.map(f => f.key).join(', ')}.
+              </>
+            )}
           </div>
 
           <div className="space-y-2">

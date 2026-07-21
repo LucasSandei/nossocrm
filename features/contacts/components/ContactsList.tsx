@@ -263,6 +263,18 @@ export const ContactsList: React.FC<ContactsListProps> = ({
                                                         </span>
                                                     )}
                                                 </span>
+                                                {contact.tags && contact.tags.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1 mt-1">
+                                                        {contact.tags.map(tag => (
+                                                            <span
+                                                                key={tag}
+                                                                className="text-[10px] bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-1.5 py-0.5 rounded-full"
+                                                            >
+                                                                {tag}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     </td>

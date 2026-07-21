@@ -14,6 +14,7 @@ import { PaginationControls } from './components/PaginationControls';
 import { DuplicatesBanner } from './components/DuplicatesBanner';
 import { useDuplicateContactsQuery, useMergeContactsMutation } from '@/lib/query/hooks';
 import { ConfirmDialog as ConfirmModal } from '@/components/ui/confirm-dialog';
+import { ContactsBulkTagPopover } from './components/ContactsBulkTagPopover';
 
 const ContactFormModal = dynamic(
     () => import('./components/ContactFormModal').then(m => ({ default: m.ContactFormModal })),
@@ -133,6 +134,9 @@ export const ContactsPage: React.FC = () => {
                         </button>
                     </div>
                     <div className="flex items-center gap-2">
+                        {controller.viewMode === 'people' && (
+                            <ContactsBulkTagPopover contactIds={Array.from(controller.selectedIds)} />
+                        )}
                         <button
                             onClick={() => controller.setBulkDeleteConfirm(true)}
                             className="flex items-center gap-2 px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors"

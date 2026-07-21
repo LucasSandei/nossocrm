@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useId, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import {
   useContacts,
   useActivities,
@@ -12,6 +11,8 @@ import {
   useCreateActivity,
   useUpdateActivity,
   useDeleteActivity,
+  useDealsView,
+  useContactCustomFieldDefinitions,
 } from '@/lib/query/hooks';
 import { useUIState } from '@/store/uiState';
 import { useActiveProducts } from '@/lib/query/hooks/useProductsQuery';
@@ -20,9 +21,8 @@ import { useToast } from '@/context/ToastContext';
 import { ConfirmDialog as ConfirmModal } from '@/components/ui/confirm-dialog';
 import { LossReasonModal } from '@/components/ui/LossReasonModal';
 import { useMoveDealSimple } from '@/lib/query/hooks';
-import { DEALS_VIEW_KEY } from '@/lib/query';
 import { FocusTrap, useFocusReturn } from '@/lib/a11y';
-import { Activity, DealView } from '@/types';
+import { Activity } from '@/types';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { useResponsiveMode } from '@/hooks/useResponsiveMode';
 import { DealSheet } from '../DealSheet';
@@ -95,6 +95,7 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
   const removeItemFromDeal = (dealId: string, itemId: string) => removeDealItemMutation.mutateAsync({ dealId, itemId });
 
   const { data: contacts = [] } = useContacts();
+  const { data: contactCustomFieldDefinitions = [] } = useContactCustomFieldDefinitions();
   const { data: activities = [] } = useActivities();
   const { data: boards = [] } = useBoards();
   const { activeBoardId } = useUIState();
@@ -113,14 +114,15 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
   const { addToast } = useToast();
   const router = useRouter();
 
-  // Subscribe to the same cache the Kanban uses (DEALS_VIEW_KEY).
-  // This ensures newly-created deals (written there by the optimistic insert in CRMContext.addDeal)
-  // are immediately visible to the modal, without waiting for Realtime to update ['deals', 'list'].
-  const { data: allDeals = [] } = useQuery<DealView[]>({
-    queryKey: DEALS_VIEW_KEY,
-    queryFn: () => [] as DealView[], // never called — enabled: false; queryFn required by TanStack Query v5
-    enabled: false, // don't trigger a new fetch — data is always hydrated by the Kanban's useDealsByBoard
-  });
+  // Subscribe to the same cache the Kanban uses (DEALS_VIEW_KEY), via the real
+  // queryFn (useDealsView, no filters). Using the actual queryFn here — instead
+  // of a dummy `queryFn: () => []` — matters because TanStack Query v5 calls
+  // `Query.setOptions()` on every render of every observer sharing this key,
+  // overwriting the shared query's queryFn with whichever observer rendered
+  // last. A dummy queryFn intermittently "won" that race and caused
+  // invalidation-triggered refetches (e.g. after adding a product/value) to
+  // silently no-op, requiring a manual page refresh.
+  const { data: allDeals = [] } = useDealsView();
 
   // Performance: avoid repeated `find(...)` on large arrays.
   const dealsById = useMemo(() => new Map(allDeals.map((d) => [d.id, d])), [allDeals]);
@@ -704,6 +706,41 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                     )}
                   </div>
                 </div>
+
+                {contact && ((contact.tags?.length || 0) > 0 || contactCustomFieldDefinitions.length > 0) && (
+                  <div className="pt-4 border-t border-slate-100 dark:border-white/5 space-y-4">
+                    {(contact.tags?.length || 0) > 0 && (
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Etiquetas do Contato</h3>
+                        <div className="flex flex-wrap gap-1.5">
+                          {contact.tags!.map(tag => (
+                            <span
+                              key={tag}
+                              className="text-[10px] bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-2 py-0.5 rounded-full"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {contactCustomFieldDefinitions.length > 0 && (
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Campos Personalizados do Contato</h3>
+                        <div className="space-y-1.5">
+                          {contactCustomFieldDefinitions.map(field => (
+                            <div key={field.id} className="flex justify-between text-sm gap-2">
+                              <span className="text-slate-500 flex-shrink-0">{field.label}</span>
+                              <span className="text-slate-900 dark:text-white text-right truncate">
+                                {contact.customFields?.[field.key] || '—'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="pt-4 border-t border-slate-100 dark:border-white/5">
                   <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Detalhes</h3>

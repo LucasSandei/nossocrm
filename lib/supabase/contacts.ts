@@ -16,6 +16,14 @@ import { supabase } from './client';
 import { Contact, CRMCompany, OrganizationId, PaginationState, PaginatedResponse, ContactsServerFilters } from '@/types';
 import { sanitizeUUID, sanitizeText, sanitizeNumber } from './utils';
 import { normalizePhoneE164 } from '@/lib/phone';
+import { contactTagsService } from './tags';
+
+/** Anexa `tags` (nomes) a cada contato, buscando em lote via contact_tags. */
+async function attachTags(contacts: Contact[]): Promise<Contact[]> {
+  if (contacts.length === 0) return contacts;
+  const { data: tagsByContact } = await contactTagsService.listForContacts(contacts.map(c => c.id));
+  return contacts.map(c => ({ ...c, tags: tagsByContact.get(c.id) || [] }));
+}
 
 async function getCurrentOrganizationId(): Promise<string | null> {
   if (!supabase) return null;
@@ -81,6 +89,8 @@ export interface DbContact {
   owner_id: string | null;
   /** Quando true, o agente de IA não responde a este contato. */
   ai_paused: boolean;
+  /** Valores dos campos personalizados (chaveados por CustomFieldDefinition.key). */
+  custom_fields: Record<string, string> | null;
 }
 
 /**
@@ -134,6 +144,7 @@ const transformContact = (db: DbContact): Contact => ({
   createdAt: db.created_at,
   updatedAt: db.updated_at,
   aiPaused: db.ai_paused ?? false,
+  customFields: db.custom_fields || {},
 });
 
 /**
@@ -181,6 +192,7 @@ const transformContactToDb = (contact: Partial<Contact>): Partial<DbContact> => 
   if (contact.lastPurchaseDate !== undefined) db.last_purchase_date = contact.lastPurchaseDate || null;
   if (contact.totalValue !== undefined) db.total_value = contact.totalValue;
   if (contact.aiPaused !== undefined) db.ai_paused = contact.aiPaused;
+  if (contact.customFields !== undefined) db.custom_fields = contact.customFields || {};
 
   return db;
 };
@@ -270,7 +282,8 @@ export const contactsService = {
       const { data, error } = await contactsQuery.in('id', uniqueIds);
 
       if (error) return { data: null, error };
-      return { data: (data || []).map(c => transformContact(c as DbContact)), error: null };
+      const contacts = await attachTags((data || []).map(c => transformContact(c as DbContact)));
+      return { data: contacts, error: null };
     } catch (e) {
       return { data: null, error: e as Error };
     }
@@ -296,7 +309,8 @@ export const contactsService = {
         .limit(1000);
 
       if (error) return { data: null, error };
-      return { data: (data || []).map(c => transformContact(c as DbContact)), error: null };
+      const contacts = await attachTags((data || []).map(c => transformContact(c as DbContact)));
+      return { data: contacts, error: null };
     } catch (e) {
       return { data: null, error: e as Error };
     }
@@ -392,7 +406,7 @@ export const contactsService = {
       if (error) return { data: null, error };
 
       const totalCount = count ?? 0;
-      const contacts = (data || []).map(c => transformContact(c as DbContact));
+      const contacts = await attachTags((data || []).map(c => transformContact(c as DbContact)));
       const hasMore = (pageIndex + 1) * pageSize < totalCount;
 
       return {
@@ -438,6 +452,7 @@ export const contactsService = {
         last_interaction: sanitizeText(contact.lastInteraction),
         last_purchase_date: sanitizeText(contact.lastPurchaseDate),
         total_value: sanitizeNumber(contact.totalValue, 0),
+        custom_fields: contact.customFields || {},
         ...(organizationId ? { organization_id: organizationId } : {}),
       };
 
@@ -449,7 +464,13 @@ export const contactsService = {
 
       if (error) return { data: null, error };
 
-      return { data: transformContact(data as DbContact), error: null };
+      let created = transformContact(data as DbContact);
+      if (contact.tags && contact.tags.length > 0) {
+        await contactTagsService.setContactTags(created.id, contact.tags);
+        created = { ...created, tags: contact.tags };
+      }
+
+      return { data: created, error: null };
     } catch (e) {
       return { data: null, error: e as Error };
     }
@@ -475,7 +496,14 @@ export const contactsService = {
         .update(dbUpdates)
         .eq('id', id);
 
-      return { error };
+      if (error) return { error };
+
+      if (updates.tags !== undefined) {
+        const { error: tagsError } = await contactTagsService.setContactTags(id, updates.tags);
+        if (tagsError) return { error: tagsError };
+      }
+
+      return { error: null };
     } catch (e) {
       return { error: e as Error };
     }
