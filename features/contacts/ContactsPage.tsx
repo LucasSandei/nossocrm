@@ -3,7 +3,7 @@
 import React from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { Trash2, X } from 'lucide-react';
+import { Trash2, X, LayoutGrid } from 'lucide-react';
 import { useContactsController } from './hooks/useContactsController';
 import { ContactsHeader } from './components/ContactsHeader';
 import { ContactsFilters } from './components/ContactsFilters';
@@ -15,6 +15,8 @@ import { DuplicatesBanner } from './components/DuplicatesBanner';
 import { useDuplicateContactsQuery, useMergeContactsMutation } from '@/lib/query/hooks';
 import { ConfirmDialog as ConfirmModal } from '@/components/ui/confirm-dialog';
 import { ContactsBulkTagPopover } from './components/ContactsBulkTagPopover';
+import { ContactsBulkStagePopover } from './components/ContactsBulkStagePopover';
+import { BulkAddToBoardModal } from './components/BulkAddToBoardModal';
 
 const ContactFormModal = dynamic(
     () => import('./components/ContactFormModal').then(m => ({ default: m.ContactFormModal })),
@@ -135,7 +137,20 @@ export const ContactsPage: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-2">
                         {controller.viewMode === 'people' && (
-                            <ContactsBulkTagPopover contactIds={Array.from(controller.selectedIds)} />
+                            <>
+                                <ContactsBulkTagPopover contactIds={Array.from(controller.selectedIds)} />
+                                <ContactsBulkStagePopover
+                                    contactCount={controller.selectedIds.size}
+                                    onSelectStage={controller.bulkUpdateStage}
+                                />
+                                <button
+                                    onClick={() => controller.setIsBulkAddToBoardOpen(true)}
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-lg transition-colors"
+                                >
+                                    <LayoutGrid size={14} />
+                                    Cadastrar em board
+                                </button>
+                            </>
                         )}
                         <button
                             onClick={() => controller.setBulkDeleteConfirm(true)}
@@ -205,6 +220,14 @@ export const ContactsPage: React.FC = () => {
                 onSelect={controller.createDealForContact}
                 boards={controller.boards}
                 contactName={controller.contactForDeal?.name || ''}
+            />
+
+            <BulkAddToBoardModal
+                isOpen={controller.isBulkAddToBoardOpen}
+                onClose={() => controller.setIsBulkAddToBoardOpen(false)}
+                onConfirm={controller.bulkAddSelectedContactsToBoard}
+                boards={controller.boards}
+                contactCount={controller.selectedIds.size}
             />
 
             <ConfirmModal

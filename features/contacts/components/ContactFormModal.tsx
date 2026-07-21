@@ -4,7 +4,16 @@ import { Contact } from '@/types';
 import { DebugFillButton } from '@/components/debug/DebugFillButton';
 import { fakeContact } from '@/lib/debug';
 import { FocusTrap, useFocusReturn } from '@/lib/a11y';
-import { useLifecycleStages, useTags, useContactCustomFieldDefinitions } from '@/lib/query/hooks';
+import { useTags, useContactCustomFieldDefinitions } from '@/lib/query/hooks';
+
+/** Estágios do funil de contatos — mesmo conjunto usado em ContactsStageTabs/StageBadge. */
+export const CONTACT_STAGE_OPTIONS = [
+  { value: 'LEAD', label: 'Lead' },
+  { value: 'MQL', label: 'MQL' },
+  { value: 'PROSPECT', label: 'Prospect' },
+  { value: 'CUSTOMER', label: 'Cliente' },
+  { value: 'OTHER', label: 'Outros / Perdidos' },
+] as const;
 
 interface ContactFormData {
   name: string;
@@ -55,7 +64,6 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
   const [isCreatingBatch, setIsCreatingBatch] = useState(false);
   const [tagInput, setTagInput] = useState('');
 
-  const { data: lifecycleStages = [] } = useLifecycleStages();
   const { data: availableTags = [] } = useTags();
   const { data: customFieldDefinitions = [] } = useContactCustomFieldDefinitions();
 
@@ -236,9 +244,8 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
                     value={formData.stage}
                     onChange={e => setFormData({ ...formData, stage: e.target.value })}
                   >
-                    <option value="">Sem estágio</option>
-                    {lifecycleStages.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
+                    {CONTACT_STAGE_OPTIONS.map(s => (
+                      <option key={s.value} value={s.value}>{s.label}</option>
                     ))}
                   </select>
                 </div>

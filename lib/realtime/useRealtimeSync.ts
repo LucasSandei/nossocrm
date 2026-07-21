@@ -114,6 +114,12 @@ export function useRealtimeSync(
   // but avoid storms on bursts (treat burst as invalidate-only).
   const pendingBoardStagesInsertCountRef = useRef(0);
   const flushScheduledRef = useRef(false);
+  // Bulk contact imports (CSV) can emit hundreds of INSERT realtime events in a
+  // few seconds. Refetching the paginated contacts list on every single one is
+  // a request storm, and can even show a stale intermediate row count if an
+  // in-flight response resolves after a later one. Debounce: mark stale
+  // immediately (cheap), but only actually refetch once the burst settles.
+  const contactsBurstRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onchangeRef = useRef(onchange);
   
   // Keep callback ref up to date without causing re-renders
@@ -560,7 +566,17 @@ export function useRealtimeSync(
               // Don't invalidate for deals INSERT - we've added it directly
               return;
             }
-            
+
+            if (table === 'contacts') {
+              queryClient.invalidateQueries({ queryKey: queryKeys.contacts.all, exact: false, refetchType: 'none' });
+              if (contactsBurstRefetchTimerRef.current) clearTimeout(contactsBurstRefetchTimerRef.current);
+              contactsBurstRefetchTimerRef.current = setTimeout(() => {
+                contactsBurstRefetchTimerRef.current = null;
+                queryClient.invalidateQueries({ queryKey: queryKeys.contacts.all, exact: false, refetchType: 'all' });
+              }, 800);
+              return;
+            }
+
             if (!flushScheduledRef.current) {
               flushScheduledRef.current = true;
               queueMicrotask(() => {
@@ -947,6 +963,9 @@ export function useRealtimeSync(
       clearTimeout(subscribeTimer);
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+      }
+      if (contactsBurstRefetchTimerRef.current) {
+        clearTimeout(contactsBurstRefetchTimerRef.current);
       }
       const channelToRemove = channelRef.current;
       channelRef.current = null;

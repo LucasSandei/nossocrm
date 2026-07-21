@@ -510,6 +510,29 @@ export const contactsService = {
   },
 
   /**
+   * Atualiza o estágio de vários contatos de uma vez (ação em massa).
+   *
+   * @param ids - IDs dos contatos.
+   * @param stage - Novo estágio (LEAD, MQL, PROSPECT, CUSTOMER, OTHER).
+   * @returns Promise com erro, se houver.
+   */
+  async bulkUpdateStage(ids: string[], stage: string): Promise<{ error: Error | null }> {
+    try {
+      if (!supabase) {
+        return { error: new Error('Supabase não configurado') };
+      }
+      if (ids.length === 0) return { error: null };
+      const { error } = await supabase
+        .from('contacts')
+        .update({ stage, updated_at: new Date().toISOString() })
+        .in('id', ids);
+      return { error };
+    } catch (e) {
+      return { error: e as Error };
+    }
+  },
+
+  /**
    * Exclui um contato.
    * 
    * @param id - ID do contato a ser excluído.

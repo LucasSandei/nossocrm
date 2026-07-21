@@ -435,6 +435,38 @@ export const useUpdateContactStage = () => {
 };
 
 /**
+ * Bulk update stage for several contacts at once (ação em massa da aba Contatos).
+ */
+export const useBulkUpdateContactsStage = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ ids, stage }: { ids: string[]; stage: string }) => {
+      const { error } = await contactsService.bulkUpdateStage(ids, stage);
+      if (error) throw error;
+      return { ids, stage };
+    },
+    onSuccess: ({ ids, stage }) => {
+      const idSet = new Set(ids);
+      const applyStage = (contact: Contact): Contact =>
+        idSet.has(contact.id) ? { ...contact, stage } : contact;
+
+      queryClient.setQueryData<Contact[]>(queryKeys.contacts.lists(), (old = []) => old.map(applyStage));
+
+      const queries = queryClient.getQueriesData<PaginatedResponse<Contact>>({ queryKey: queryKeys.contacts.all });
+      for (const [key, data] of queries) {
+        if (!Array.isArray(key) || key[1] !== 'paginated' || !data) continue;
+        queryClient.setQueryData<PaginatedResponse<Contact>>(key, { ...data, data: data.data.map(applyStage) });
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.contacts.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.contacts.stageCounts() });
+    },
+  });
+};
+
+/**
  * Hook to delete a contact
  */
 export const useDeleteContact = () => {

@@ -11,6 +11,7 @@ import {
   useUpdateContact,
   useDeleteContact,
   useBulkDeleteContacts,
+  useBulkUpdateContactsStage,
   useBulkDeleteCompanies,
   useCreateCompany,
   useUpdateCompany,
@@ -41,6 +42,7 @@ export const useContactsController = () => {
   const updateContactMutation = useUpdateContact();
   const deleteContactMutation = useDeleteContact();
   const bulkDeleteContactsMutation = useBulkDeleteContacts();
+  const bulkUpdateStageMutation = useBulkUpdateContactsStage();
   const checkHasDealsMutation = useContactHasDeals();
   const createCompanyMutation = useCreateCompany();
   const updateCompanyMutation = useUpdateCompany();
@@ -162,7 +164,7 @@ export const useContactsController = () => {
     role: '',
     companyName: '',
     status: 'ACTIVE' as Contact['status'],
-    stage: '',
+    stage: ContactStage.LEAD as string,
     source: '' as NonNullable<Contact['source']> | '',
     birthDate: '',
     notes: '',
@@ -186,7 +188,7 @@ export const useContactsController = () => {
     setEditingContact(null);
     setFormData({
       name: '', email: '', phone: '', role: '', companyName: '',
-      status: 'ACTIVE', stage: '', source: '', birthDate: '', notes: '',
+      status: 'ACTIVE', stage: ContactStage.LEAD, source: '', birthDate: '', notes: '',
       tags: [], customFields: {},
     });
     setIsModalOpen(true);
@@ -202,7 +204,7 @@ export const useContactsController = () => {
       role: contact.role || '',
       companyName: company?.name || '',
       status: contact.status || 'ACTIVE',
-      stage: contact.stage || '',
+      stage: contact.stage || ContactStage.LEAD,
       source: contact.source || '',
       birthDate: contact.birthDate || '',
       notes: contact.notes || '',
@@ -384,6 +386,19 @@ export const useContactsController = () => {
 
     setSelectedIds(new Set());
     setBulkDeleteConfirm(false);
+  };
+
+  // Ação em massa: mudar estágio dos contatos selecionados
+  const bulkUpdateStage = async (stage: string) => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    try {
+      await bulkUpdateStageMutation.mutateAsync({ ids, stage });
+      addToast(`Estágio atualizado em ${ids.length} contato(s).`, 'success');
+      setSelectedIds(new Set());
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Erro ao mudar estágio.', 'error');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -608,6 +623,54 @@ export const useContactsController = () => {
     setCreateDealContactId(null);
   };
 
+  // Ação em massa: cadastrar os contatos selecionados como negócios em um board/estágio escolhidos
+  const [isBulkAddToBoardOpen, setIsBulkAddToBoardOpen] = useState(false);
+
+  const bulkAddSelectedContactsToBoard = async (boardId: string, stageId: string) => {
+    const board = boards.find(b => b.id === boardId);
+    const ids = Array.from(selectedIds);
+    if (!board || ids.length === 0) return;
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const contactId of ids) {
+      const contact = contacts.find(c => c.id === contactId);
+      if (!contact) { errorCount += 1; continue; }
+      try {
+        await createDealMutation.mutateAsync({
+          title: contact.name,
+          contactId: contact.id,
+          companyId: contact.companyId || undefined,
+          boardId: board.id,
+          status: stageId,
+          value: 0,
+          probability: 0,
+          priority: 'medium',
+          tags: [],
+          items: [],
+          customFields: {},
+          owner: { name: 'Eu', avatar: '' },
+          isWon: false,
+          isLost: false,
+        });
+        successCount += 1;
+      } catch {
+        errorCount += 1;
+      }
+    }
+
+    if (successCount > 0) {
+      addToast(`${successCount} negócio(s) criado(s) no board "${board.name}"`, 'success');
+    }
+    if (errorCount > 0) {
+      addToast(`Falha ao criar negócio para ${errorCount} contato(s)`, 'error');
+    }
+
+    setSelectedIds(new Set());
+    setIsBulkAddToBoardOpen(false);
+  };
+
   // Update contact wrapper
   const updateContact = (contactId: string, data: Partial<Contact>) => {
     updateContactMutation.mutate({
@@ -749,6 +812,10 @@ export const useContactsController = () => {
     convertContactToDeal,
     createDealForContact,
     confirmBulkDelete,
+    bulkUpdateStage,
+    isBulkAddToBoardOpen,
+    setIsBulkAddToBoardOpen,
+    bulkAddSelectedContactsToBoard,
     addToast: addToast || showToast,
   };
 };

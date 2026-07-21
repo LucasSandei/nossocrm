@@ -384,12 +384,17 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
   };
 
   const confirmDeleteDeal = () => {
-    if (deleteId) {
-      deleteDeal(deleteId);
-      addToast('Negócio excluído com sucesso', 'success');
-      setDeleteId(null);
-      onClose();
-    }
+    if (!deleteId) return;
+    const idToDelete = deleteId;
+    setDeleteId(null);
+    deleteDeal(idToDelete)
+      .then(() => {
+        addToast('Negócio excluído com sucesso', 'success');
+        onClose();
+      })
+      .catch((err: Error) => {
+        addToast(`Erro ao excluir negócio: ${err.message}`, 'error');
+      });
   };
 
   const saveTitle = () => {
@@ -1346,7 +1351,10 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
   }
 
   return (
-    <FocusTrap active={isOpen} onEscape={onClose}>
+    // Desativa o trap enquanto o AlertDialog de exclusão (Radix, focus-scope próprio)
+    // está aberto — dois sistemas de focus-trap diferentes (focus-trap-react aqui,
+    // Radix ali) competindo pelo foco travava os botões Excluir/Cancelar do modal.
+    <FocusTrap active={isOpen && !deleteId} onEscape={onClose}>
       <div
         // Backdrop + positioning wrapper. Clicking outside the panel should close the modal.
         // No desktop, este modal não deve cobrir a sidebar de navegação.
