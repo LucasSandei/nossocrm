@@ -57,6 +57,7 @@ import { useRouter } from 'next/navigation';
 import { StageProgressBar } from '../StageProgressBar';
 import { ActivityRow } from '@/features/activities/components/ActivityRow';
 import { formatPriorityPtBr } from '@/lib/utils/priority';
+import { toWhatsAppPhone } from '@/lib/phone';
 import { BriefingDrawer } from '@/features/deals/components/BriefingDrawer';
 import { AIExtractedFields } from '@/features/deals/components/AIExtractedFields';
 
@@ -659,13 +660,16 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                   <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2">
                     <User size={14} /> Contato Principal
                   </h3>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold">
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold shrink-0">
                       {(deal.contactName || '?').charAt(0)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-slate-900 dark:text-white font-medium text-sm flex items-center gap-2">
-                        {deal.contactName || 'Sem contato'}
+                      {/* Nome + etiqueta (flex-wrap evita sobreposição em telas estreitas) */}
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <p className="text-slate-900 dark:text-white font-medium text-sm">
+                          {deal.contactName || 'Sem contato'}
+                        </p>
                         {contact?.stage &&
                           (() => {
                             const stage = lifecycleStageById.get(contact.stage);
@@ -678,38 +682,58 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
 
                             return (
                               <span
-                                className={`text-[10px] font-black px-2 py-0.5 rounded shadow-sm uppercase tracking-wider flex items-center gap-1 text-white ${colorClass}`}
+                                className={`text-[10px] font-black px-2 py-0.5 rounded shadow-sm uppercase tracking-wider inline-flex items-center gap-1 text-white ${colorClass}`}
                               >
                                 {stage.name}
                               </span>
                             );
                           })()}
-                      </p>
-                      <p className="text-slate-500 text-xs">{deal.contactEmail}</p>
+                      </div>
+                      {deal.contactEmail && (
+                        <p className="text-slate-500 text-xs truncate">{deal.contactEmail}</p>
+                      )}
+                      {/* Telefone clicável → abre o WhatsApp (wa.me com DDI+DDD+número) */}
+                      {contact?.phone && (() => {
+                        const waPhone = toWhatsAppPhone(contact.phone);
+                        if (!waPhone) return null;
+                        return (
+                          <a
+                            href={`https://wa.me/${waPhone}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-green-400 hover:underline"
+                            title="Abrir conversa no WhatsApp"
+                          >
+                            <Phone size={12} aria-hidden="true" />
+                            {contact.phone}
+                          </a>
+                        );
+                      })()}
                     </div>
-                    {/* Send Message Button */}
-                    {contact?.phone && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // Navigate to messaging with contact info for new conversation
-                          const params = new URLSearchParams({
-                            newConversation: 'true',
-                            contactId: contact.id,
-                            contactName: contact.name || '',
-                            contactPhone: contact.phone || '',
-                          });
-                          router.push(`/messaging?${params.toString()}`);
-                          onClose();
-                        }}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 hover:bg-green-100 dark:hover:bg-green-500/20 rounded-lg transition-colors"
-                        title="Enviar mensagem via WhatsApp"
-                      >
-                        <MessageSquare size={14} />
-                        <span className="hidden sm:inline">Mensagem</span>
-                      </button>
-                    )}
                   </div>
+
+                  {/* Botão Mensagem em linha própria — não sobrepõe a etiqueta acima */}
+                  {contact?.phone && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Navigate to messaging with contact info for new conversation
+                        const params = new URLSearchParams({
+                          newConversation: 'true',
+                          contactId: contact.id,
+                          contactName: contact.name || '',
+                          contactPhone: contact.phone || '',
+                        });
+                        router.push(`/messaging?${params.toString()}`);
+                        onClose();
+                      }}
+                      className="mt-3 w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-2 text-xs font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 hover:bg-green-100 dark:hover:bg-green-500/20 rounded-lg transition-colors"
+                      title="Enviar mensagem via WhatsApp"
+                    >
+                      <MessageSquare size={14} />
+                      Mensagem
+                    </button>
+                  )}
                 </div>
 
                 {contact && ((contact.tags?.length || 0) > 0 || contactCustomFieldDefinitions.length > 0) && (
