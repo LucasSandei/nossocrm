@@ -46,6 +46,8 @@ vi.mock('@/lib/query/hooks', () => ({
   useUpdateActivity: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useDeleteActivity: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useContactCustomFieldDefinitions: () => ({ data: [], isLoading: false }),
+  useUpdateContact: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useTags: () => ({ data: [], isLoading: false }),
   // DealDetailModal reads DEALS_VIEW_KEY via useDealsView (the real queryFn,
   // shared with the Kanban) instead of a dummy useQuery — see DealDetailModal.tsx.
   useDealsView: () => ({

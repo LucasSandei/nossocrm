@@ -109,6 +109,16 @@ export function getPublicApiOpenApiDocument(): OpenApiDocument {
             last_interaction: { type: ['string', 'null'] },
             last_purchase_date: { type: ['string', 'null'] },
             total_value: { type: ['number', 'null'] },
+            tags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Etiquetas do contato (catálogo compartilhado da organização).',
+            },
+            custom_fields: {
+              type: 'object',
+              additionalProperties: { type: 'string' },
+              description: 'Campos personalizados, chaveados pela key da definição.',
+            },
             created_at: { type: 'string' },
             updated_at: { type: ['string', 'null'] },
           },
@@ -483,6 +493,21 @@ export function getPublicApiOpenApiDocument(): OpenApiDocument {
                     total_value: { type: 'number' },
                     source: { type: 'string' },
                     notes: { type: 'string' },
+                    tags: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      description: 'Substitui as etiquetas do contato pela lista enviada. Lista vazia remove todas. Etiquetas inexistentes são criadas no catálogo.',
+                    },
+                    tags_add: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      description: 'Acrescenta etiquetas sem remover as existentes. Preferir este campo em formulários, para não apagar a classificação feita pelo time.',
+                    },
+                    custom_fields: {
+                      type: 'object',
+                      additionalProperties: { type: 'string' },
+                      description: 'Valores dos campos personalizados, chaveados pela key da definição (Configurações > Campos personalizados de contato).',
+                    },
                   },
                 },
               },

@@ -6,6 +6,7 @@ import { decodeOffsetCursor, encodeOffsetCursor, parseLimit } from '@/lib/public
 import { sanitizePostgrestValue } from '@/lib/utils/sanitize';
 import { normalizeEmail, normalizePhone, normalizeText } from '@/lib/public-api/sanitize';
 import { sanitizeUUID } from '@/lib/supabase/utils';
+import { addContactTags, setContactTags, listTagsForContacts } from '@/lib/public-api/contactTags';
 
 export const runtime = 'nodejs';
 
@@ -25,7 +26,16 @@ const ContactUpsertSchema = z.object({
   total_value: z.number().optional(),
   source: z.string().optional(),
   notes: z.string().optional(),
+  /** Substitui as etiquetas do contato pela lista informada (lista vazia limpa). */
+  tags: z.array(z.string()).optional(),
+  /** Adiciona etiquetas preservando as existentes — indicado para formulários. */
+  tags_add: z.array(z.string()).optional(),
+  /** Valores dos campos personalizados, chaveados por `key` da definição. */
+  custom_fields: z.record(z.string(), z.string()).optional(),
 }).strict();
+
+const CONTACT_COLUMNS =
+  'id,name,email,phone,role,company_name,client_company_id,avatar,notes,status,stage,source,birth_date,last_interaction,last_purchase_date,total_value,custom_fields,created_at,updated_at';
 
 function toIsoDateString(v: string | undefined) {
   const s = (v || '').trim();
@@ -43,6 +53,56 @@ function toIsoTimestamp(v: string | undefined) {
   const d = new Date(s);
   if (Number.isNaN(d.getTime())) return '__INVALID__';
   return d.toISOString();
+}
+
+/**
+ * Aplica etiquetas ao contato e devolve a lista final para ecoar na resposta.
+ *
+ * `tags` substitui, `tags_add` acrescenta. Quando os dois vêm juntos, a
+ * substituição roda primeiro e a adição complementa. Falha aqui não deve
+ * derrubar o contato já gravado sem sinalizar, então devolve um erro pronto.
+ */
+async function applyTags(opts: {
+  organizationId: string;
+  contactId: string;
+  replace?: string[];
+  add?: string[];
+}): Promise<{ names: string[] | undefined; error: NextResponse | null }> {
+  if (opts.replace === undefined && opts.add === undefined) {
+    return { names: undefined, error: null };
+  }
+
+  try {
+    if (opts.replace !== undefined) {
+      await setContactTags({
+        organizationId: opts.organizationId,
+        contactId: opts.contactId,
+        tagNames: opts.replace,
+      });
+    }
+    if (opts.add !== undefined && opts.add.length > 0) {
+      await addContactTags({
+        organizationId: opts.organizationId,
+        contactId: opts.contactId,
+        tagNames: opts.add,
+      });
+    }
+
+    const map = await listTagsForContacts({
+      organizationId: opts.organizationId,
+      contactIds: [opts.contactId],
+    });
+    return { names: map.get(opts.contactId) || [], error: null };
+  } catch (e) {
+    console.error('[API] Tag assignment error:', e);
+    return {
+      names: undefined,
+      error: NextResponse.json(
+        { error: 'Contact saved, but tags failed', code: 'TAGS_ERROR' },
+        { status: 500 }
+      ),
+    };
+  }
 }
 
 async function resolveCompanyIdFromName(opts: { organizationId: string; companyName: string }) {
@@ -85,7 +145,7 @@ export async function GET(request: Request) {
   const sb = createStaticAdminClient();
   let query = sb
     .from('contacts')
-    .select('id,name,email,phone,role,company_name,client_company_id,avatar,notes,status,stage,source,birth_date,last_interaction,last_purchase_date,total_value,created_at,updated_at', { count: 'exact' })
+    .select(CONTACT_COLUMNS, { count: 'exact' })
     .eq('organization_id', auth.organizationId)
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
@@ -110,6 +170,17 @@ export async function GET(request: Request) {
   const nextOffset = to + 1;
   const nextCursor = nextOffset < total ? encodeOffsetCursor(nextOffset) : null;
 
+  let tagsByContact = new Map<string, string[]>();
+  try {
+    tagsByContact = await listTagsForContacts({
+      organizationId: auth.organizationId,
+      contactIds: (data || []).map((c: any) => c.id),
+    });
+  } catch (e) {
+    console.error('[API] Tags lookup error:', e);
+    return NextResponse.json({ error: 'Internal server error', code: 'DB_ERROR' }, { status: 500 });
+  }
+
   return NextResponse.json({
     data: (data || []).map((c: any) => ({
       id: c.id,
@@ -128,6 +199,8 @@ export async function GET(request: Request) {
       last_interaction: c.last_interaction ?? null,
       last_purchase_date: c.last_purchase_date ?? null,
       total_value: c.total_value != null ? Number(c.total_value) : null,
+      tags: tagsByContact.get(c.id) || [],
+      custom_fields: c.custom_fields || {},
       created_at: c.created_at,
       updated_at: c.updated_at,
     })),
@@ -208,19 +281,32 @@ export async function POST(request: Request) {
     updated_at: now,
   };
 
+  if (parsed.data.custom_fields !== undefined) {
+    payload.custom_fields = parsed.data.custom_fields;
+  }
+
   if (existing.data?.id) {
     if (name) payload.name = name;
     const { data, error } = await sb
       .from('contacts')
       .update(payload)
       .eq('id', existing.data.id)
-      .select('id,name,email,phone,role,company_name,client_company_id,avatar,notes,status,stage,source,birth_date,last_interaction,last_purchase_date,total_value,created_at,updated_at')
+      .select(CONTACT_COLUMNS)
       .single();
     if (error) {
       console.error('[API] Database error:', error)
       return NextResponse.json({ error: 'Internal server error', code: 'DB_ERROR' }, { status: 500 })
     }
-    return NextResponse.json({ data: data, action: 'updated' });
+
+    const tags = await applyTags({
+      organizationId: auth.organizationId,
+      contactId: existing.data.id,
+      replace: parsed.data.tags,
+      add: parsed.data.tags_add,
+    });
+    if (tags.error) return tags.error;
+
+    return NextResponse.json({ data: { ...(data as any), tags: tags.names }, action: 'updated' });
   }
 
   if (!name) {
@@ -231,19 +317,29 @@ export async function POST(request: Request) {
     ...payload,
     name,
     created_at: now,
-    status: 'ACTIVE',
-    stage: 'LEAD',
+    // Respeita o que o integrador enviou; só cai no padrão quando vem vazio.
+    status: payload.status || 'ACTIVE',
+    stage: payload.stage || 'LEAD',
   };
 
   const { data, error } = await sb
     .from('contacts')
     .insert(insertPayload)
-    .select('id,name,email,phone,role,company_name,client_company_id,avatar,notes,status,stage,source,birth_date,last_interaction,last_purchase_date,total_value,created_at,updated_at')
+    .select(CONTACT_COLUMNS)
     .single();
   if (error) {
     console.error('[API] Database error:', error)
     return NextResponse.json({ error: 'Internal server error', code: 'DB_ERROR' }, { status: 500 })
   }
-  return NextResponse.json({ data, action: 'created' }, { status: 201 });
+
+  const tags = await applyTags({
+    organizationId: auth.organizationId,
+    contactId: (data as any).id,
+    replace: parsed.data.tags,
+    add: parsed.data.tags_add,
+  });
+  if (tags.error) return tags.error;
+
+  return NextResponse.json({ data: { ...(data as any), tags: tags.names }, action: 'created' }, { status: 201 });
 }
 

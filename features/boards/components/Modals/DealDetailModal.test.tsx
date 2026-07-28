@@ -49,6 +49,8 @@ vi.mock('@/lib/query/hooks', () => ({
     data: [{ id: 'cf-1', key: 'origemCampanha', label: 'Origem da Campanha', type: 'text', entityType: 'contact' }],
     isLoading: false,
   }),
+  useUpdateContact: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useTags: () => ({ data: [{ id: 'tag-1', name: 'Base antiga' }], isLoading: false }),
   // DealDetailModal reads DEALS_VIEW_KEY via useDealsView (the real queryFn,
   // shared with the Kanban) instead of a dummy useQuery — see the comment in
   // DealDetailModal.tsx explaining why a dummy queryFn caused a cache bug.
@@ -215,8 +217,10 @@ describe('DealDetailModal', () => {
     // base grande, em que o contato do negócio não vem nos 1000 registros.
     render(<DealDetailModal dealId="deal-1" isOpen={true} onClose={() => {}} />);
 
-    expect(document.body.textContent).toContain('Etiquetas do Contato');
+    // Campo único de etiquetas, do contato — não existe mais "Tags" do negócio.
+    expect(document.body.textContent).toContain('Etiquetas');
     expect(document.body.textContent).toContain('Base antiga');
+    expect(document.body.textContent).toContain('Adicionar etiqueta');
 
     expect(document.body.textContent).toContain('Notas do Contato');
     expect(document.body.textContent).toContain('Prefere contato à tarde');

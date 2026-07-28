@@ -5,6 +5,7 @@ import { createStaticAdminClient } from '@/lib/supabase/server';
 import { isValidUUID } from '@/lib/supabase/utils';
 import { normalizeEmail, normalizePhone, normalizeText } from '@/lib/public-api/sanitize';
 import { sanitizeUUID } from '@/lib/supabase/utils';
+import { addContactTags, setContactTags, listTagsForContacts } from '@/lib/public-api/contactTags';
 
 export const runtime = 'nodejs';
 
@@ -24,7 +25,16 @@ const ContactPatchSchema = z.object({
   total_value: z.number().nullable().optional(),
   source: z.string().optional(),
   notes: z.string().optional(),
+  /** Substitui as etiquetas do contato pela lista informada (lista vazia limpa). */
+  tags: z.array(z.string()).optional(),
+  /** Adiciona etiquetas preservando as existentes — indicado para formulários. */
+  tags_add: z.array(z.string()).optional(),
+  /** Valores dos campos personalizados, chaveados por `key` da definição. */
+  custom_fields: z.record(z.string(), z.string()).optional(),
 }).strict();
+
+const CONTACT_COLUMNS =
+  'id,name,email,phone,role,company_name,client_company_id,avatar,notes,status,stage,source,birth_date,last_interaction,last_purchase_date,total_value,custom_fields,created_at,updated_at';
 
 function toIsoDateString(v: string | undefined | null) {
   const s = (v || '').trim();
@@ -55,7 +65,7 @@ export async function GET(request: Request, ctx: { params: Promise<{ contactId: 
   const sb = createStaticAdminClient();
   const { data, error } = await sb
     .from('contacts')
-    .select('id,name,email,phone,role,company_name,client_company_id,avatar,notes,status,stage,source,birth_date,last_interaction,last_purchase_date,total_value,created_at,updated_at')
+    .select(CONTACT_COLUMNS)
     .eq('organization_id', auth.organizationId)
     .is('deleted_at', null)
     .eq('id', contactId)
@@ -67,7 +77,16 @@ export async function GET(request: Request, ctx: { params: Promise<{ contactId: 
   }
   if (!data) return NextResponse.json({ error: 'Contact not found', code: 'NOT_FOUND' }, { status: 404 });
 
-  return NextResponse.json({ data });
+  let tags: string[] = [];
+  try {
+    const map = await listTagsForContacts({ organizationId: auth.organizationId, contactIds: [contactId] });
+    tags = map.get(contactId) || [];
+  } catch (e) {
+    console.error('[API] Tags lookup error:', e);
+    return NextResponse.json({ error: 'Internal server error', code: 'DB_ERROR' }, { status: 500 });
+  }
+
+  return NextResponse.json({ data: { ...(data as any), tags, custom_fields: (data as any).custom_fields || {} } });
 }
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ contactId: string }> }) {
@@ -120,6 +139,9 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ contactId
   if (parsed.data.total_value !== undefined) {
     updates.total_value = parsed.data.total_value === null ? null : Number(parsed.data.total_value);
   }
+  if (parsed.data.custom_fields !== undefined) {
+    updates.custom_fields = parsed.data.custom_fields;
+  }
   updates.updated_at = new Date().toISOString();
 
   const sb = createStaticAdminClient();
@@ -128,7 +150,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ contactId
     .update(updates)
     .eq('organization_id', auth.organizationId)
     .eq('id', contactId)
-    .select('id,name,email,phone,role,company_name,client_company_id,avatar,notes,status,stage,source,birth_date,last_interaction,last_purchase_date,total_value,created_at,updated_at')
+    .select(CONTACT_COLUMNS)
     .maybeSingle();
 
   if (error) {
@@ -137,6 +159,21 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ contactId
   }
   if (!data) return NextResponse.json({ error: 'Contact not found', code: 'NOT_FOUND' }, { status: 404 });
 
-  return NextResponse.json({ data });
+  let tags: string[] = [];
+  try {
+    if (parsed.data.tags !== undefined) {
+      await setContactTags({ organizationId: auth.organizationId, contactId, tagNames: parsed.data.tags });
+    }
+    if (parsed.data.tags_add !== undefined && parsed.data.tags_add.length > 0) {
+      await addContactTags({ organizationId: auth.organizationId, contactId, tagNames: parsed.data.tags_add });
+    }
+    const map = await listTagsForContacts({ organizationId: auth.organizationId, contactIds: [contactId] });
+    tags = map.get(contactId) || [];
+  } catch (e) {
+    console.error('[API] Tag assignment error:', e);
+    return NextResponse.json({ error: 'Contact saved, but tags failed', code: 'TAGS_ERROR' }, { status: 500 });
+  }
+
+  return NextResponse.json({ data: { ...(data as any), tags, custom_fields: (data as any).custom_fields || {} } });
 }
 

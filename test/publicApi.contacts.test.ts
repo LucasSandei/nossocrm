@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // UUIDs v4 válidos (versão 4, variante 8 na posição 19)
 const ORG_ID = 'a1b2c3d4-e5f6-4a7b-8c9d-e0f1a2b3c4d5'
 const CONTACT_ID = 'd4e5f6a7-b8c9-4d0e-8f1a-b2c3d4e5f6a7'
+const TAG_ID = 'c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f'
 
 const AUTH_OK = {
   ok: true as const,
@@ -85,10 +86,42 @@ const companyQueryBuilder = {
   })),
 }
 
+/**
+ * Catálogo de etiquetas da organização. `eq` encerra a cadeia em resolveTagIds
+ * (`select(...).eq('organization_id', ...)`), por isso resolve direto.
+ */
+const tagsQueryBuilder = {
+  select: vi.fn().mockReturnThis(),
+  eq: vi.fn(async () => ({
+    data: [{ id: TAG_ID, name: 'Instagram' }],
+    error: null,
+  })),
+  upsert: vi.fn(() => ({
+    select: vi.fn(async () => ({ data: [], error: null })),
+  })),
+}
+
+/** Junction contact_tags: leitura paginada por `range`, escrita por insert/upsert. */
+const contactTagsQueryBuilder = {
+  select: vi.fn().mockReturnThis(),
+  eq: vi.fn().mockReturnThis(),
+  in: vi.fn().mockReturnThis(),
+  order: vi.fn().mockReturnThis(),
+  range: vi.fn(async () => ({
+    data: [{ contact_id: CONTACT_ID, tags: { name: 'Instagram' } }],
+    error: null,
+  })),
+  delete: vi.fn().mockReturnThis(),
+  insert: vi.fn(async () => ({ error: null })),
+  upsert: vi.fn(async () => ({ error: null })),
+}
+
 const supabaseMock = {
   from: vi.fn((table: string) => {
     if (table === 'contacts') return contactQueryBuilder
     if (table === 'crm_companies') return companyQueryBuilder
+    if (table === 'tags') return tagsQueryBuilder
+    if (table === 'contact_tags') return contactTagsQueryBuilder
     throw new Error(`Unexpected table: ${table}`)
   }),
 }
@@ -170,6 +203,25 @@ describe('GET /api/public/v1/contacts', () => {
     expect(c).toHaveProperty('role', null)
     expect(c).toHaveProperty('birth_date', null)
     expect(c).toHaveProperty('total_value', null)
+    // Etiquetas e campos personalizados fazem parte do payload do contato.
+    expect(c.tags).toEqual(['Instagram'])
+    expect(c.custom_fields).toEqual({})
+  })
+
+  it('devolve custom_fields quando o contato tem valores gravados', async () => {
+    // Arrange
+    contactQueryBuilder.range.mockResolvedValueOnce({
+      data: [{ ...CONTACT_FIXTURE, custom_fields: { origemFormulario: 'Landing Page' } }],
+      count: 1,
+      error: null,
+    })
+
+    // Act
+    const res = await GET(makeGetRequest('http://localhost/api/public/v1/contacts'))
+    const body = await res.json()
+
+    // Assert
+    expect(body.data[0].custom_fields).toEqual({ origemFormulario: 'Landing Page' })
   })
 
   it('normaliza total_value para number quando presente', async () => {
@@ -406,6 +458,84 @@ describe('POST /api/public/v1/contacts', () => {
       expect.objectContaining({
         organization_id: ORG_ID,
       })
+    )
+  })
+
+  it('grava custom_fields enviados pelo integrador', async () => {
+    // Act
+    await POST(
+      makePostRequest({
+        name: 'Form Lead',
+        email: 'form@example.com',
+        custom_fields: { origemFormulario: 'Landing Page', interesse: 'Mulheres Livres' },
+      })
+    )
+
+    // Assert
+    expect(contactQueryBuilder.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        custom_fields: { origemFormulario: 'Landing Page', interesse: 'Mulheres Livres' },
+      })
+    )
+  })
+
+  it('tags_add acrescenta etiquetas sem apagar as existentes', async () => {
+    // Act
+    const res = await POST(
+      makePostRequest({
+        name: 'Form Lead',
+        email: 'form@example.com',
+        tags_add: ['Instagram'],
+      })
+    )
+    const body = await res.json()
+
+    // Assert
+    expect(contactTagsQueryBuilder.upsert).toHaveBeenCalled()
+    // O caminho destrutivo não pode ser acionado por tags_add.
+    expect(contactTagsQueryBuilder.delete).not.toHaveBeenCalled()
+    expect(body.data.tags).toEqual(['Instagram'])
+  })
+
+  it('tags substitui a lista inteira de etiquetas', async () => {
+    // Act
+    await POST(
+      makePostRequest({
+        name: 'Form Lead',
+        email: 'form@example.com',
+        tags: ['Instagram'],
+      })
+    )
+
+    // Assert
+    expect(contactTagsQueryBuilder.delete).toHaveBeenCalled()
+    expect(contactTagsQueryBuilder.insert).toHaveBeenCalled()
+  })
+
+  it('não toca em etiquetas quando o payload não menciona tags', async () => {
+    // Act
+    await POST(makePostRequest({ name: 'Sem Tags', email: 'semtags@example.com' }))
+
+    // Assert
+    expect(contactTagsQueryBuilder.delete).not.toHaveBeenCalled()
+    expect(contactTagsQueryBuilder.insert).not.toHaveBeenCalled()
+    expect(contactTagsQueryBuilder.upsert).not.toHaveBeenCalled()
+  })
+
+  it('respeita stage e status enviados ao criar, em vez de forçar LEAD/ACTIVE', async () => {
+    // Act
+    await POST(
+      makePostRequest({
+        name: 'Cliente',
+        email: 'cliente@example.com',
+        status: 'INACTIVE',
+        stage: 'CUSTOMER',
+      })
+    )
+
+    // Assert
+    expect(contactQueryBuilder.insert).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'INACTIVE', stage: 'CUSTOMER' })
     )
   })
 

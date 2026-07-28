@@ -61,6 +61,9 @@ const DealCardComponent: React.FC<DealCardProps> = ({
   const [localDragging, setLocalDragging] = useState(false);
   const isClosed = isDealClosed(deal);
 
+  // Etiquetas são do contato (mesmo campo da aba Contatos), não do negócio.
+  const contactTags = deal.contactTags || [];
+
   const handleToggleMenu = (e: React.MouseEvent) => {
     e.stopPropagation();
     setOpenMenuId(isMenuOpen ? null : deal.id);
@@ -132,7 +135,7 @@ const DealCardComponent: React.FC<DealCardProps> = ({
     if (deal.isLost) parts.push('perdido');
 
     // Tags (visible text) - include all shown tags
-    const shownTags = deal.tags.slice(0, isClosed ? 1 : 2);
+    const shownTags = contactTags.slice(0, isClosed ? 1 : 2);
     if (shownTags.length > 0) {
       parts.push(...shownTags);
     }
@@ -216,8 +219,8 @@ const DealCardComponent: React.FC<DealCardProps> = ({
             ✗ PERDIDO
           </span>
         )}
-        {/* Regular tags */}
-        {deal.tags.slice(0, isClosed ? 1 : 2).map((tag, index) => (
+        {/* Etiquetas do contato */}
+        {contactTags.slice(0, isClosed ? 1 : 2).map((tag, index) => (
           <span
             key={`${deal.id}-tag-${index}`}
             className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/5"

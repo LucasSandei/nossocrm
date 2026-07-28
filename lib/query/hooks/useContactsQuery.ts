@@ -399,6 +399,11 @@ export const useUpdateContact = () => {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.contacts.all });
+      // O card do board espelha etiquetas, notas e campos personalizados do
+      // contato — sem isso, editar aqui só refletiria lá no próximo refetch.
+      queryClient.invalidateQueries({ queryKey: DEALS_VIEW_KEY });
+      // Etiquetas novas entram no catálogo compartilhado da organização.
+      queryClient.invalidateQueries({ queryKey: queryKeys.tags.lists() });
     },
   });
 };

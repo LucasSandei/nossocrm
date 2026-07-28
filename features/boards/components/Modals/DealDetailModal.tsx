@@ -13,6 +13,8 @@ import {
   useDeleteActivity,
   useDealsView,
   useContactCustomFieldDefinitions,
+  useUpdateContact,
+  useTags,
 } from '@/lib/query/hooks';
 import { useUIState } from '@/store/uiState';
 import { useActiveProducts } from '@/lib/query/hooks/useProductsQuery';
@@ -23,7 +25,6 @@ import { LossReasonModal } from '@/components/ui/LossReasonModal';
 import { useMoveDealSimple } from '@/lib/query/hooks';
 import { FocusTrap, useFocusReturn } from '@/lib/a11y';
 import { Activity } from '@/types';
-import { usePersistedState } from '@/hooks/usePersistedState';
 import { useResponsiveMode } from '@/hooks/useResponsiveMode';
 import { DealSheet } from '../DealSheet';
 import {
@@ -97,6 +98,10 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
 
   const { data: contacts = [] } = useContacts();
   const { data: contactCustomFieldDefinitions = [] } = useContactCustomFieldDefinitions();
+  const { data: tagCatalog = [] } = useTags();
+  const updateContactMutation = useUpdateContact();
+  const updateContact = (vars: { id: string; updates: Partial<import('@/types').Contact> }) =>
+    updateContactMutation.mutate(vars);
   const { data: activities = [] } = useActivities();
   const { data: boards = [] } = useBoards();
   const { activeBoardId } = useUIState();
@@ -159,16 +164,6 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
     };
   }, [contactsById, deal]);
 
-  /** Há algum valor preenchido nos campos personalizados do contato? */
-  const hasContactCustomFieldValues = useMemo(
-    () =>
-      contactCustomFieldDefinitions.some(field => {
-        const value = contact?.customFields?.[field.key];
-        return value !== undefined && value !== null && String(value).trim() !== '';
-      }),
-    [contact, contactCustomFieldDefinitions]
-  );
-
   // Determine the correct board for this deal
   const dealBoard = deal ? (boardsById.get(deal.boardId) ?? activeBoard) : activeBoard;
 
@@ -205,13 +200,20 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
   const [lossReasonOrigin, setLossReasonOrigin] = useState<'button' | 'stage'>('button');
   const [showBriefingDrawer, setShowBriefingDrawer] = useState(false);
 
-  // Tags suggestions (local for now; Settings UI writes to the same key)
-  const [availableTags, setAvailableTags] = usePersistedState<string[]>('crm_tags', []);
   const [tagQuery, setTagQuery] = useState('');
 
   const normalizeTag = (value: string) => value.trim().replace(/\s+/g, ' ');
-  const tagsLower = useMemo(() => new Set((deal?.tags || []).map(t => t.toLowerCase())), [deal?.tags]);
-  const availableTagsLower = useMemo(() => new Set((availableTags || []).map(t => t.toLowerCase())), [availableTags]);
+
+  /**
+   * Etiquetas são do CONTATO, não do negócio: é o mesmo campo da aba Contatos.
+   * O card lê e escreve na mesma origem (`contact_tags`), então adicionar aqui
+   * reflete na aba Contatos e vice-versa.
+   */
+  const contactTags = contact?.tags || [];
+  const contactTagsLower = useMemo(
+    () => new Set(contactTags.map(t => t.toLowerCase())),
+    [contactTags]
+  );
 
   // Helper functions removed as they are now handled by ActivityRow component
 
@@ -264,36 +266,39 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
 
   if (!isOpen || !deal) return null;
 
-  const addDealTag = (raw: string) => {
+  const saveContactTags = (nextTags: string[]) => {
+    if (!contact) return;
+    updateContact({ id: contact.id, updates: { tags: nextTags } });
+  };
+
+  const addContactTag = (raw: string) => {
     const next = normalizeTag(raw);
     if (!next) return;
-    if (tagsLower.has(next.toLowerCase())) return;
-
-    const current = deal.tags || [];
-    const nextTags = [...current, next];
-    updateDeal(deal.id, { tags: nextTags });
-
-    // Keep suggestions up-to-date (case-insensitive)
-    if (!availableTagsLower.has(next.toLowerCase())) {
-      setAvailableTags(prev => [...(prev || []), next]);
+    if (contactTagsLower.has(next.toLowerCase())) {
+      setTagQuery('');
+      return;
     }
 
+    saveContactTags([...contactTags, next]);
     setTagQuery('');
   };
 
-  const removeDealTag = (tag: string) => {
-    const current = deal.tags || [];
-    const nextTags = current.filter(t => t !== tag);
-    updateDeal(deal.id, { tags: nextTags });
+  const removeContactTag = (tag: string) => {
+    saveContactTags(contactTags.filter(t => t !== tag));
   };
 
+  /**
+   * Sugestões vêm do catálogo compartilhado da organização (`public.tags`), o
+   * mesmo usado pela aba Contatos, em vez de uma lista solta no localStorage.
+   */
   const tagSuggestions = (() => {
     const q = normalizeTag(tagQuery);
     if (!q) return [];
     const qLower = q.toLowerCase();
-    return (availableTags || [])
-      .filter(t => !tagsLower.has(t.toLowerCase()))
-      .filter(t => t.toLowerCase().includes(qLower))
+    return tagCatalog
+      .map(t => t.name)
+      .filter(name => !contactTagsLower.has(name.toLowerCase()))
+      .filter(name => name.toLowerCase().includes(qLower))
       .slice(0, 8);
   })();
 
@@ -769,26 +774,8 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                   )}
                 </div>
 
-                {contact &&
-                  ((contact.tags?.length || 0) > 0 ||
-                    !!contact.notes ||
-                    hasContactCustomFieldValues) && (
+                {contact && (!!contact.notes || contactCustomFieldDefinitions.length > 0) && (
                   <div className="pt-4 border-t border-slate-100 dark:border-white/5 space-y-4">
-                    {(contact.tags?.length || 0) > 0 && (
-                      <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Etiquetas do Contato</h3>
-                        <div className="flex flex-wrap gap-1.5">
-                          {contact.tags.map(tag => (
-                            <span
-                              key={tag}
-                              className="text-[10px] bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-2 py-0.5 rounded-full"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                     {!!contact.notes && (
                       <div>
                         <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2">
@@ -799,7 +786,12 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                         </p>
                       </div>
                     )}
-                    {hasContactCustomFieldValues && (
+                    {/*
+                      Campos personalizados aparecem sempre que houver definições,
+                      mesmo sem valor: é o espelho do que existe na aba Contatos,
+                      então o time enxerga quais campos o formulário preenche.
+                    */}
+                    {contactCustomFieldDefinitions.length > 0 && (
                       <div>
                         <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Campos Personalizados do Contato</h3>
                         <div className="space-y-1.5">
@@ -839,82 +831,94 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                   </div>
                 </div>
 
-                {/* TAGS */}
+                {/*
+                  ETIQUETAS — campo único, do contato. É o mesmo campo da aba
+                  Contatos: editar aqui altera o contato, e não uma lista
+                  paralela do negócio.
+                */}
                 <div className="pt-4 border-t border-slate-100 dark:border-white/5">
                   <h3 className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center gap-2">
-                    <TagIcon size={14} /> Tags
+                    <TagIcon size={14} /> Etiquetas
                   </h3>
 
-                  <div className="flex flex-wrap gap-2">
-                    {(deal.tags || []).length === 0 ? (
-                      <p className="text-xs text-slate-500 italic">Sem tags.</p>
-                    ) : (
-                      (deal.tags || []).map((tag) => (
-                        <span
-                          key={tag}
-                          className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/10"
-                        >
-                          {tag}
-                          <button
-                            type="button"
-                            onClick={() => removeDealTag(tag)}
-                            className="ml-0.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400"
-                            aria-label={`Remover tag ${tag}`}
-                            title="Remover tag"
-                          >
-                            <X size={12} />
-                          </button>
-                        </span>
-                      ))
-                    )}
-                  </div>
-
-                  <div className="mt-3">
-                    <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">
-                      Adicionar tag
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={tagQuery}
-                        onChange={(e) => setTagQuery(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            addDealTag(tagQuery);
-                          }
-                        }}
-                        placeholder="Ex: VIP, Urgente, Q4..."
-                        className="min-w-0 flex-1 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-500 dark:text-white"
-                        aria-label="Adicionar tag"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => addDealTag(tagQuery)}
-                        disabled={!normalizeTag(tagQuery)}
-                        className="shrink-0 h-10 w-10 inline-flex items-center justify-center rounded-lg bg-primary-600 hover:bg-primary-500 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
-                        aria-label="Adicionar tag"
-                        title="Adicionar tag"
-                      >
-                        <Plus size={18} aria-hidden="true" />
-                      </button>
-                    </div>
-
-                    {(normalizeTag(tagQuery) && tagSuggestions.length > 0) && (
-                      <div className="mt-2 bg-white dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-lg overflow-hidden">
-                        {tagSuggestions.map((t) => (
-                          <button
-                            key={t}
-                            type="button"
-                            onClick={() => addDealTag(t)}
-                            className="w-full text-left px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
-                          >
-                            {t}
-                          </button>
-                        ))}
+                  {!contact ? (
+                    <p className="text-xs text-slate-500 italic">
+                      Vincule um contato ao negócio para usar etiquetas.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        {contactTags.length === 0 ? (
+                          <p className="text-xs text-slate-500 italic">Sem etiquetas.</p>
+                        ) : (
+                          contactTags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-full bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/10"
+                            >
+                              {tag}
+                              <button
+                                type="button"
+                                onClick={() => removeContactTag(tag)}
+                                className="ml-0.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400"
+                                aria-label={`Remover etiqueta ${tag}`}
+                                title="Remover etiqueta"
+                              >
+                                <X size={12} />
+                              </button>
+                            </span>
+                          ))
+                        )}
                       </div>
-                    )}
-                  </div>
+
+                      <div className="mt-3">
+                        <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1">
+                          Adicionar etiqueta
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={tagQuery}
+                            onChange={(e) => setTagQuery(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                addContactTag(tagQuery);
+                              }
+                            }}
+                            placeholder="Ex: VIP, Instagram, Base antiga..."
+                            className="min-w-0 flex-1 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary-500 dark:text-white"
+                            aria-label="Adicionar etiqueta"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => addContactTag(tagQuery)}
+                            disabled={!normalizeTag(tagQuery)}
+                            className="shrink-0 h-10 w-10 inline-flex items-center justify-center rounded-lg bg-primary-600 hover:bg-primary-500 disabled:opacity-50 disabled:cursor-not-allowed text-white transition-colors"
+                            aria-label="Adicionar etiqueta"
+                            title="Adicionar etiqueta"
+                          >
+                            <Plus size={18} aria-hidden="true" />
+                          </button>
+                        </div>
+
+                        {(normalizeTag(tagQuery) && tagSuggestions.length > 0) && (
+                          <div className="mt-2 bg-white dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-lg overflow-hidden">
+                            {tagSuggestions.map((t) => (
+                              <button
+                                key={t}
+                                type="button"
+                                onClick={() => addContactTag(t)}
+                                className="w-full text-left px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+                              >
+                                {t}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* AI EXTRACTED FIELDS (Zero Config BANT) */}
