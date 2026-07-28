@@ -116,7 +116,6 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
   const updateActivity = (id: string, updates: Partial<import('@/types').Activity>) => updateActivityMutation.mutateAsync({ id, updates });
   const deleteActivity = (id: string) => deleteActivityMutation.mutateAsync(id);
   const { data: products = [] } = useActiveProducts();
-  const customFieldDefinitions: import('@/types').CustomFieldDefinition[] = [];
   const { profile } = useAuth();
   const { addToast } = useToast();
   const router = useRouter();
@@ -449,11 +448,6 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
       updateDeal(deal.id, { value: Number(editValue) });
       setIsEditingValue(false);
     }
-  };
-
-  const updateCustomField = (key: string, value: string | number | boolean) => {
-    const updatedFields = { ...deal.customFields, [key]: value };
-    updateDeal(deal.id, { customFields: updatedFields });
   };
 
   // dealActivities memoized above.
@@ -930,44 +924,6 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                   />
                 </div>
 
-                {/* DYNAMIC CUSTOM FIELDS INPUTS */}
-                {customFieldDefinitions.length > 0 && (
-                  <div className="pt-4 border-t border-slate-100 dark:border-white/5">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase mb-3">
-                      Campos Personalizados
-                    </h3>
-                    <div className="space-y-4">
-                      {customFieldDefinitions.map(field => (
-                        <div key={field.id}>
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                            {field.label}
-                          </label>
-                          {field.type === 'select' ? (
-                            <select
-                              value={deal.customFields?.[field.key] || ''}
-                              onChange={e => updateCustomField(field.key, e.target.value)}
-                              className="w-full bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded px-2 py-1.5 text-sm dark:text-white focus:ring-1 focus:ring-primary-500 outline-none"
-                            >
-                              <option value="">Selecione...</option>
-                              {field.options?.map(opt => (
-                                <option key={opt} value={opt}>
-                                  {opt}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              type={field.type}
-                              value={deal.customFields?.[field.key] || ''}
-                              onChange={e => updateCustomField(field.key, e.target.value)}
-                              className="w-full bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded px-2 py-1.5 text-sm dark:text-white focus:ring-1 focus:ring-primary-500 outline-none"
-                            />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 

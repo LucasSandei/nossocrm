@@ -9,7 +9,7 @@ import { KanbanBoard } from './Kanban/KanbanBoard';
 import { KanbanList } from './Kanban/KanbanList';
 import { DeleteBoardModal } from './Modals/DeleteBoardModal';
 import { LossReasonModal } from '@/components/ui/LossReasonModal';
-import { DealView, CustomFieldDefinition, Board, BoardStage } from '@/types';
+import { DealView, Board, BoardStage } from '@/types';
 import { ExportTemplateModal } from './Modals/ExportTemplateModal';
 import { useAuth } from '@/context/AuthContext';
 import PageLoader from '@/components/PageLoader';
@@ -54,7 +54,6 @@ interface PipelineViewProps {
   openActivityMenuId: string | null;
   setOpenActivityMenuId: (id: string | null) => void;
   filteredDeals: DealView[];
-  customFieldDefinitions: CustomFieldDefinition[];
   isLoading: boolean;
   handleDragStart: (e: React.DragEvent, id: string, title: string) => void;
   handleDragOver: (e: React.DragEvent) => void;
@@ -122,7 +121,6 @@ interface PipelineViewProps {
   openActivityMenuId,
   setOpenActivityMenuId,
   filteredDeals,
-  customFieldDefinitions,
   isLoading,
   handleDragStart,
   handleDragOver,
@@ -174,7 +172,6 @@ interface PipelineViewProps {
   openActivityMenuId,
   setOpenActivityMenuId,
   filteredDeals,
-  customFieldDefinitions,
   isLoading,
   handleDragStart,
   handleDragOver,
@@ -229,7 +226,6 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
   openActivityMenuId,
   setOpenActivityMenuId,
   filteredDeals,
-  customFieldDefinitions,
   isLoading,
   handleDragStart,
   handleDragOver,
@@ -350,7 +346,6 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
               <KanbanList
                 stages={activeBoard.stages}
                 filteredDeals={filteredDeals}
-                customFieldDefinitions={customFieldDefinitions}
                 setSelectedDealId={setSelectedDealId}
                 openActivityMenuId={openActivityMenuId}
                 setOpenActivityMenuId={setOpenActivityMenuId}

@@ -23,19 +23,6 @@ vi.mock('./hooks/useSettingsController', () => ({
     defaultRoute: '/boards',
     setDefaultRoute: vi.fn(),
 
-    customFieldDefinitions: [],
-    newFieldLabel: '',
-    setNewFieldLabel: vi.fn(),
-    newFieldType: 'text',
-    setNewFieldType: vi.fn(),
-    newFieldOptions: '',
-    setNewFieldOptions: vi.fn(),
-    editingId: null,
-    startEditingField: vi.fn(),
-    cancelEditingField: vi.fn(),
-    handleSaveField: vi.fn(),
-    removeCustomField: vi.fn(),
-
     availableTags: ['VIP'],
     newTagName: '',
     setNewTagName: vi.fn(),
@@ -124,7 +111,7 @@ describe('SettingsPage RBAC', () => {
       screen.queryByRole('heading', { name: /^Gerenciamento de Tags$/i })
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('heading', { name: /^Campos Personalizados$/i })
+      screen.queryByRole('heading', { name: /^Campos Personalizados de Contato$/i })
     ).not.toBeInTheDocument()
     expect(
       screen.queryByRole('heading', { name: /^API \(Integrações\)$/i })
@@ -148,7 +135,7 @@ describe('SettingsPage RBAC', () => {
       screen.getByRole('heading', { name: /^Gerenciamento de Tags$/i })
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('heading', { name: /^Campos Personalizados$/i })
+      screen.getByRole('heading', { name: /^Campos Personalizados de Contato$/i })
     ).toBeInTheDocument()
     // Admin também vê as abas extras
     const integrationsTab = screen.getByRole('button', { name: /integrações/i })

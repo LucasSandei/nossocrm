@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { usePathname } from 'next/navigation';
 import { useSettingsController } from './hooks/useSettingsController';
 import { TagsManager } from './components/TagsManager';
-import { CustomFieldsManager } from './components/CustomFieldsManager';
 import { ContactCustomFieldsManager } from './components/ContactCustomFieldsManager';
 import { ApiKeysSection } from './components/ApiKeysSection';
 import { WebhooksSection } from './components/WebhooksSection';
@@ -81,21 +80,6 @@ const GeneralSettings: React.FC<GeneralSettingsProps> = ({ hash, isAdmin }) => {
             setNewTagName={controller.setNewTagName}
             onAddTag={controller.handleAddTag}
             onRemoveTag={controller.removeTag}
-          />
-
-          <CustomFieldsManager
-            customFieldDefinitions={controller.customFieldDefinitions}
-            newFieldLabel={controller.newFieldLabel}
-            setNewFieldLabel={controller.setNewFieldLabel}
-            newFieldType={controller.newFieldType}
-            setNewFieldType={controller.setNewFieldType}
-            newFieldOptions={controller.newFieldOptions}
-            setNewFieldOptions={controller.setNewFieldOptions}
-            editingId={controller.editingId}
-            onStartEditing={controller.startEditingField}
-            onCancelEditing={controller.cancelEditingField}
-            onSaveField={controller.handleSaveField}
-            onRemoveField={controller.removeCustomField}
           />
 
           <ContactCustomFieldsManager />

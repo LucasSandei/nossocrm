@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { DealView, Board, CustomFieldDefinition } from '@/types';
+import { DealView, Board } from '@/types';
 import {
   useBoards,
   useDefaultBoard,
@@ -264,9 +264,6 @@ export const useBoardsController = () => {
 
   // Enable realtime sync for Kanban
   useRealtimeSyncKanban();
-
-  // Custom field definitions (TODO: migrate to query)
-  const customFieldDefinitions: CustomFieldDefinition[] = [];
 
   //View State
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
@@ -873,7 +870,6 @@ export const useBoardsController = () => {
     openActivityMenuId,
     setOpenActivityMenuId,
     filteredDeals,
-    customFieldDefinitions,
     isLoading,
     handleDragStart,
     handleDragOver,

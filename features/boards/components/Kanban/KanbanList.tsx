@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import Image from 'next/image';
-import { DealView, CustomFieldDefinition, BoardStage } from '@/types';
+import { DealView, BoardStage } from '@/types';
 import { ActivityStatusIcon } from './ActivityStatusIcon';
 import { getActivityStatus } from '@/features/boards/hooks/useBoardsController';
 import { MoveToStageModal } from '../Modals/MoveToStageModal';
@@ -11,7 +11,6 @@ type KanbanListRowProps = {
   deal: DealView;
   stageLabel: string;
   stages: BoardStage[];
-  customFieldDefinitions: CustomFieldDefinition[];
   isMenuOpen: boolean;
   onSelect: (dealId: string) => void;
   onToggleMenu: (e: React.MouseEvent, dealId: string) => void;
@@ -28,7 +27,6 @@ const KanbanListRow = React.memo(function KanbanListRow({
   deal,
   stageLabel,
   stages,
-  customFieldDefinitions,
   isMenuOpen,
   onSelect,
   onToggleMenu,
@@ -101,12 +99,6 @@ const KanbanListRow = React.memo(function KanbanListRow({
             <span className="text-xs text-slate-500">{deal.owner.name}</span>
           </div>
         </td>
-        {/* Custom Fields Cells */}
-        {customFieldDefinitions.map((field) => (
-          <td key={field.id} className="px-6 py-3 text-right text-slate-600 dark:text-slate-300 text-sm">
-            {deal.customFields?.[field.key] || '-'}
-          </td>
-        ))}
       </tr>
 
       {onMoveDealToStage && moveToStageOpen ? (
@@ -129,7 +121,6 @@ const KanbanListRow = React.memo(function KanbanListRow({
 interface KanbanListProps {
   stages: BoardStage[];
   filteredDeals: DealView[];
-  customFieldDefinitions: CustomFieldDefinition[];
   setSelectedDealId: (id: string | null) => void;
   openActivityMenuId: string | null;
   setOpenActivityMenuId: (id: string | null) => void;
@@ -148,7 +139,6 @@ interface KanbanListProps {
  * @param {KanbanListProps} {
   stages,
   filteredDeals,
-  customFieldDefinitions,
   setSelectedDealId,
   openActivityMenuId,
   setOpenActivityMenuId,
@@ -156,7 +146,6 @@ interface KanbanListProps {
 } - Parâmetro `{
   stages,
   filteredDeals,
-  customFieldDefinitions,
   setSelectedDealId,
   openActivityMenuId,
   setOpenActivityMenuId,
@@ -167,7 +156,6 @@ interface KanbanListProps {
 export const KanbanList: React.FC<KanbanListProps> = ({
   stages,
   filteredDeals,
-  customFieldDefinitions,
   setSelectedDealId,
   openActivityMenuId,
   setOpenActivityMenuId,
@@ -230,15 +218,6 @@ export const KanbanList: React.FC<KanbanListProps> = ({
               <th className="px-6 py-3 font-bold text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 Dono
               </th>
-              {/* Custom Fields Columns */}
-              {customFieldDefinitions.map(field => (
-                <th
-                  key={field.id}
-                  className="px-6 py-3 font-bold text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right"
-                >
-                  {field.label}
-                </th>
-              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-white/5">
@@ -248,7 +227,6 @@ export const KanbanList: React.FC<KanbanListProps> = ({
                 deal={deal}
                 stageLabel={stageLabelById.get(deal.status) || deal.status}
                 stages={stages}
-                customFieldDefinitions={customFieldDefinitions}
                 isMenuOpen={openActivityMenuId === deal.id}
                 onSelect={handleRowClick}
                 onToggleMenu={handleToggleMenu}
