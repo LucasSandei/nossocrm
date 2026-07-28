@@ -505,8 +505,12 @@ export function getPublicApiOpenApiDocument(): OpenApiDocument {
                     },
                     custom_fields: {
                       type: 'object',
-                      additionalProperties: { type: 'string' },
-                      description: 'Valores dos campos personalizados, chaveados pela key da definição (Configurações > Campos personalizados de contato).',
+                      additionalProperties: { type: ['string', 'number', 'boolean', 'null'] },
+                      description:
+                        'Valores dos campos personalizados, chaveados pela key da definição (Configurações > Campos personalizados de contato). ' +
+                        'A key precisa existir, caso contrário a resposta é 422 com code UNKNOWN_CUSTOM_FIELD. ' +
+                        'O valor é normalizado pelo tipo do campo: boolean aceita true/false ou Sim/Não; ' +
+                        'currency e number aceitam vírgula ou ponto decimal; date aceita YYYY-MM-DD; datetime aceita ISO 8601.',
                     },
                   },
                 },

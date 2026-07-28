@@ -5,6 +5,11 @@ import { DebugFillButton } from '@/components/debug/DebugFillButton';
 import { fakeContact } from '@/lib/debug';
 import { FocusTrap, useFocusReturn } from '@/lib/a11y';
 import { useTags, useContactCustomFieldDefinitions } from '@/lib/query/hooks';
+import {
+  inputTypeFor,
+  toInputCustomFieldValue,
+  toStoredCustomFieldValue,
+} from '@/lib/utils/customFields';
 
 /** Estágios do funil de contatos — mesmo conjunto usado em ContactsStageTabs/StageBadge. */
 export const CONTACT_STAGE_OPTIONS = [
@@ -369,13 +374,32 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
                               <option key={opt} value={opt}>{opt}</option>
                             ))}
                           </select>
-                        ) : (
-                          <input
+                        ) : field.type === 'boolean' ? (
+                          <select
                             id={`custom-field-${field.id}`}
-                            type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
                             className={INPUT_CLASS}
                             value={formData.customFields[field.key] || ''}
                             onChange={e => setCustomField(field.key, e.target.value)}
+                          >
+                            <option value="">Não informado</option>
+                            <option value="true">Sim</option>
+                            <option value="false">Não</option>
+                          </select>
+                        ) : (
+                          <input
+                            id={`custom-field-${field.id}`}
+                            type={inputTypeFor(field.type)}
+                            step={field.type === 'currency' ? '0.01' : undefined}
+                            inputMode={field.type === 'currency' ? 'decimal' : undefined}
+                            placeholder={field.type === 'currency' ? '0,00' : undefined}
+                            className={INPUT_CLASS}
+                            value={toInputCustomFieldValue(formData.customFields[field.key], field.type)}
+                            // Normaliza no blur para gravar sempre no formato canônico
+                            // (data e hora vira ISO, moeda vira número com ponto).
+                            onChange={e => setCustomField(field.key, e.target.value)}
+                            onBlur={e =>
+                              setCustomField(field.key, toStoredCustomFieldValue(e.target.value, field.type))
+                            }
                           />
                         )}
                       </div>

@@ -58,6 +58,7 @@ import { useRouter } from 'next/navigation';
 import { StageProgressBar } from '../StageProgressBar';
 import { ActivityRow } from '@/features/activities/components/ActivityRow';
 import { formatPriorityPtBr } from '@/lib/utils/priority';
+import { formatCustomFieldValue } from '@/lib/utils/customFields';
 import { toWhatsAppPhone } from '@/lib/phone';
 import { BriefingDrawer } from '@/features/deals/components/BriefingDrawer';
 import { AIExtractedFields } from '@/features/deals/components/AIExtractedFields';
@@ -799,7 +800,7 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                             <div key={field.id} className="flex justify-between text-sm gap-2">
                               <span className="text-slate-500 flex-shrink-0">{field.label}</span>
                               <span className="text-slate-900 dark:text-white text-right truncate">
-                                {contact.customFields?.[field.key] || '—'}
+                                {formatCustomFieldValue(contact.customFields?.[field.key], field.type) || '—'}
                               </span>
                             </div>
                           ))}

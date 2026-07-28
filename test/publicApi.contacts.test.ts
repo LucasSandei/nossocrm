@@ -116,12 +116,36 @@ const contactTagsQueryBuilder = {
   upsert: vi.fn(async () => ({ error: null })),
 }
 
+/**
+ * Definições de campos personalizados de contato. A cadeia termina no segundo
+ * `eq` (organization_id + entity_type), por isso ele resolve a promise.
+ */
+const customFieldDefsQueryBuilder = {
+  select: vi.fn().mockReturnThis(),
+  eq: vi.fn(function (this: any, column: string) {
+    if (column === 'entity_type') {
+      return Promise.resolve({
+        data: [
+          { key: 'origemFormulario', type: 'text' },
+          { key: 'interesse', type: 'text' },
+          { key: 'aceitaContato', type: 'boolean' },
+          { key: 'valorPlano', type: 'currency' },
+          { key: 'dataAula', type: 'date' },
+        ],
+        error: null,
+      })
+    }
+    return this
+  }),
+}
+
 const supabaseMock = {
   from: vi.fn((table: string) => {
     if (table === 'contacts') return contactQueryBuilder
     if (table === 'crm_companies') return companyQueryBuilder
     if (table === 'tags') return tagsQueryBuilder
     if (table === 'contact_tags') return contactTagsQueryBuilder
+    if (table === 'custom_field_definitions') return customFieldDefsQueryBuilder
     throw new Error(`Unexpected table: ${table}`)
   }),
 }
@@ -477,6 +501,42 @@ describe('POST /api/public/v1/contacts', () => {
         custom_fields: { origemFormulario: 'Landing Page', interesse: 'Mulheres Livres' },
       })
     )
+  })
+
+  it('normaliza custom_fields conforme o tipo da definição', async () => {
+    // Act — booleano e monetário chegam como tipos nativos do JSON
+    await POST(
+      makePostRequest({
+        name: 'Form Lead',
+        email: 'form@example.com',
+        custom_fields: { aceitaContato: true, valorPlano: 1997.9, dataAula: '2026-07-27' },
+      })
+    )
+
+    // Assert — gravados no formato canônico, sempre string
+    expect(contactQueryBuilder.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        custom_fields: { aceitaContato: 'true', valorPlano: '1997.9', dataAula: '2026-07-27' },
+      })
+    )
+  })
+
+  it('rejeita chave de campo personalizado sem definição cadastrada', async () => {
+    // Act
+    const res = await POST(
+      makePostRequest({
+        name: 'Form Lead',
+        email: 'form@example.com',
+        custom_fields: { campoQueNaoExiste: 'x' },
+      })
+    )
+    const body = await res.json()
+
+    // Assert — falhar alto é melhor que gravar dado invisível na interface
+    expect(res.status).toBe(422)
+    expect(body.code).toBe('UNKNOWN_CUSTOM_FIELD')
+    expect(body.error).toContain('campoQueNaoExiste')
+    expect(contactQueryBuilder.insert).not.toHaveBeenCalled()
   })
 
   it('tags_add acrescenta etiquetas sem apagar as existentes', async () => {

@@ -7,6 +7,7 @@ import { sanitizePostgrestValue } from '@/lib/utils/sanitize';
 import { normalizeEmail, normalizePhone, normalizeText } from '@/lib/public-api/sanitize';
 import { sanitizeUUID } from '@/lib/supabase/utils';
 import { addContactTags, setContactTags, listTagsForContacts } from '@/lib/public-api/contactTags';
+import { normalizeCustomFields } from '@/lib/public-api/customFields';
 
 export const runtime = 'nodejs';
 
@@ -30,8 +31,14 @@ const ContactUpsertSchema = z.object({
   tags: z.array(z.string()).optional(),
   /** Adiciona etiquetas preservando as existentes — indicado para formulários. */
   tags_add: z.array(z.string()).optional(),
-  /** Valores dos campos personalizados, chaveados por `key` da definição. */
-  custom_fields: z.record(z.string(), z.string()).optional(),
+  /**
+   * Valores dos campos personalizados, chaveados por `key` da definição.
+   * Aceita string, número ou booleano; a normalização para o formato canônico
+   * de cada tipo acontece na gravação.
+   */
+  custom_fields: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+    .optional(),
 }).strict();
 
 const CONTACT_COLUMNS =
@@ -282,7 +289,25 @@ export async function POST(request: Request) {
   };
 
   if (parsed.data.custom_fields !== undefined) {
-    payload.custom_fields = parsed.data.custom_fields;
+    try {
+      const normalized = await normalizeCustomFields({
+        organizationId: auth.organizationId,
+        values: parsed.data.custom_fields,
+      });
+      if (!normalized.ok) {
+        return NextResponse.json(
+          {
+            error: `Unknown custom field keys: ${normalized.unknownKeys.join(', ')}`,
+            code: 'UNKNOWN_CUSTOM_FIELD',
+          },
+          { status: 422 }
+        );
+      }
+      payload.custom_fields = normalized.values;
+    } catch (e) {
+      console.error('[API] Custom fields error:', e);
+      return NextResponse.json({ error: 'Internal server error', code: 'DB_ERROR' }, { status: 500 });
+    }
   }
 
   if (existing.data?.id) {

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { PenTool, Pencil, Check, Plus, Tag, Trash2 } from 'lucide-react';
 import { SettingsSection } from './SettingsSection';
 import { CustomFieldType } from '@/types';
+import { CUSTOM_FIELD_TYPE_LABELS, CUSTOM_FIELD_TYPE_OPTIONS } from '@/lib/utils/customFields';
 import { Button } from '@/components/ui/button';
 import { InputField, SelectField } from '@/components/ui/FormField';
 import {
@@ -112,12 +113,7 @@ export const ContactCustomFieldsManager: React.FC = () => {
             label="Tipo"
             id="contact-custom-field-type"
             containerClassName="w-40"
-            options={[
-              { value: 'text', label: 'Texto' },
-              { value: 'number', label: 'Número' },
-              { value: 'date', label: 'Data' },
-              { value: 'select', label: 'Seleção' },
-            ]}
+            options={CUSTOM_FIELD_TYPE_OPTIONS}
             value={type}
             onChange={(e) => setType(e.target.value as CustomFieldType)}
           />
@@ -165,7 +161,7 @@ export const ContactCustomFieldsManager: React.FC = () => {
                 <div className="flex items-center gap-2 text-xs text-slate-500 font-mono mt-0.5">
                   <span>{field.key}</span>
                   <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                  <span className="uppercase">{field.type}</span>
+                  <span>{CUSTOM_FIELD_TYPE_LABELS[field.type] || field.type}</span>
                   {field.options && (
                     <>
                       <span className="w-1 h-1 bg-slate-300 rounded-full"></span>

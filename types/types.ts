@@ -210,7 +210,22 @@ export interface DealItem {
 }
 
 // CUSTOM FIELDS DEFINITION
-export type CustomFieldType = 'text' | 'number' | 'date' | 'select';
+/**
+ * Tipos de campo personalizado.
+ *
+ * Os valores são sempre persistidos como string no JSONB (`custom_fields`),
+ * em formato canônico por tipo — ver `lib/utils/customFields.ts`:
+ * `boolean` = 'true'/'false', `currency`/`number` = número com ponto decimal,
+ * `date` = YYYY-MM-DD, `datetime` = ISO 8601.
+ */
+export type CustomFieldType =
+  | 'text'
+  | 'number'
+  | 'date'
+  | 'datetime'
+  | 'boolean'
+  | 'currency'
+  | 'select';
 
 export interface CustomFieldDefinition {
   id: string;
