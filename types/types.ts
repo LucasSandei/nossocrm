@@ -266,6 +266,16 @@ export interface DealView extends Deal {
   clientCompanyName?: string; // Name of the CRM client company
   contactName: string;
   contactEmail: string;
+  /** Telefone do contato (E.164), espelhado da aba Contatos. */
+  contactPhone?: string;
+  /** ID do LifecycleStage do contato, espelhado da aba Contatos. */
+  contactStage?: string;
+  /** Etiquetas do contato, espelhadas da aba Contatos (somente leitura no card). */
+  contactTags?: string[];
+  /** Notas do contato, espelhadas da aba Contatos (somente leitura no card). */
+  contactNotes?: string;
+  /** Campos personalizados do contato, chaveados por CustomFieldDefinition.key. */
+  contactCustomFields?: Record<string, string>;
   /** Nome/label do estágio atual (resolvido a partir do status UUID) */
   stageLabel: string;
 

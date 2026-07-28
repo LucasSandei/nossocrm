@@ -83,24 +83,52 @@ export const tagsService = {
 };
 
 export const contactTagsService = {
-  /** Retorna um mapa contactId -> nomes de etiquetas, para os IDs informados. */
+  /**
+   * Retorna um mapa contactId -> nomes de etiquetas, para os IDs informados.
+   *
+   * Busca em lotes de IDs e pagina as linhas: o PostgREST devolve no máximo
+   * 1000 linhas por resposta e a querystring do `in(...)` tem limite de
+   * tamanho. Sem isso, telas que resolvem muitos contatos de uma vez (Boards)
+   * recebiam parte dos contatos sem etiqueta alguma.
+   */
   async listForContacts(contactIds: string[]): Promise<{ data: Map<string, string[]>; error: Error | null }> {
     const result = new Map<string, string[]>();
     if (!supabase || contactIds.length === 0) return { data: result, error: null };
 
-    const { data, error } = await supabase
-      .from('contact_tags')
-      .select('contact_id, tags(name)')
-      .in('contact_id', contactIds);
-    if (error) return { data: result, error };
+    const uniqueIds = Array.from(new Set(contactIds.filter(Boolean)));
+    if (uniqueIds.length === 0) return { data: result, error: null };
 
-    for (const row of data || []) {
-      const tagName = (row as any).tags?.name as string | undefined;
-      if (!tagName) continue;
-      const list = result.get(row.contact_id) || [];
-      list.push(tagName);
-      result.set(row.contact_id, list);
+    const ID_CHUNK_SIZE = 200;
+    const ROW_PAGE_SIZE = 1000;
+
+    for (let i = 0; i < uniqueIds.length; i += ID_CHUNK_SIZE) {
+      const chunk = uniqueIds.slice(i, i + ID_CHUNK_SIZE);
+      let offset = 0;
+
+      while (true) {
+        const { data, error } = await supabase
+          .from('contact_tags')
+          .select('contact_id, tags(name)')
+          .in('contact_id', chunk)
+          .order('contact_id', { ascending: true })
+          .order('tag_id', { ascending: true })
+          .range(offset, offset + ROW_PAGE_SIZE - 1);
+        if (error) return { data: result, error };
+
+        const rows = data || [];
+        for (const row of rows) {
+          const tagName = (row as any).tags?.name as string | undefined;
+          if (!tagName) continue;
+          const list = result.get(row.contact_id) || [];
+          list.push(tagName);
+          result.set(row.contact_id, list);
+        }
+
+        if (rows.length < ROW_PAGE_SIZE) break;
+        offset += ROW_PAGE_SIZE;
+      }
     }
+
     return { data: result, error: null };
   },
 

@@ -45,7 +45,10 @@ vi.mock('@/lib/query/hooks', () => ({
   useCreateActivity: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useUpdateActivity: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useDeleteActivity: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
-  useContactCustomFieldDefinitions: () => ({ data: [], isLoading: false }),
+  useContactCustomFieldDefinitions: () => ({
+    data: [{ id: 'cf-1', key: 'origemCampanha', label: 'Origem da Campanha', type: 'text', entityType: 'contact' }],
+    isLoading: false,
+  }),
   // DealDetailModal reads DEALS_VIEW_KEY via useDealsView (the real queryFn,
   // shared with the Kanban) instead of a dummy useQuery — see the comment in
   // DealDetailModal.tsx explaining why a dummy queryFn caused a cache bug.
@@ -60,6 +63,12 @@ vi.mock('@/lib/query/hooks', () => ({
       companyName: 'Moreira Comércio',
       contactName: 'Fulano',
       contactEmail: 'fulano@example.com',
+      // Campos espelhados da aba Contatos (o card não depende de useContacts,
+      // que é limitado a 1000 registros).
+      contactPhone: '+5511999999999',
+      contactTags: ['Base antiga'],
+      contactNotes: 'Prefere contato à tarde',
+      contactCustomFields: { origemCampanha: 'Youtube' },
       stageLabel: 'Novo',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -199,6 +208,24 @@ describe('DealDetailModal', () => {
 
     rerender(<DealDetailModal dealId="deal-1" isOpen={false} onClose={() => {}} />);
     expect(document.body.textContent).not.toContain('Application error');
+  });
+
+  it('mostra etiquetas, notas e campos personalizados do contato mesmo sem o contato na lista carregada', () => {
+    // useContacts() está mockado como lista vazia de propósito: é o cenário de
+    // base grande, em que o contato do negócio não vem nos 1000 registros.
+    render(<DealDetailModal dealId="deal-1" isOpen={true} onClose={() => {}} />);
+
+    expect(document.body.textContent).toContain('Etiquetas do Contato');
+    expect(document.body.textContent).toContain('Base antiga');
+
+    expect(document.body.textContent).toContain('Notas do Contato');
+    expect(document.body.textContent).toContain('Prefere contato à tarde');
+
+    expect(document.body.textContent).toContain('Origem da Campanha');
+    expect(document.body.textContent).toContain('Youtube');
+
+    // Telefone espelhado habilita o atalho de WhatsApp no card.
+    expect(document.body.textContent).toContain('+5511999999999');
   });
 });
 

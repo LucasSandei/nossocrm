@@ -65,6 +65,12 @@ export const dealsViewQueryFn = async (
       companyName: company?.name || 'Sem empresa',
       contactName: contact?.name || 'Sem contato',
       contactEmail: contact?.email || '',
+      // Espelha os campos da aba Contatos para o card do board (somente leitura).
+      contactPhone: contact?.phone || '',
+      contactStage: contact?.stage || undefined,
+      contactTags: contact?.tags || [],
+      contactNotes: contact?.notes || '',
+      contactCustomFields: contact?.customFields || {},
       stageLabel: stageMap.get(deal.status) || 'Estágio não identificado',
     };
   });

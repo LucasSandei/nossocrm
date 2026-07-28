@@ -274,15 +274,26 @@ export const contactsService = {
         return { data: [], error: null };
       }
 
-      let contactsQuery = supabase
-        .from('contacts')
-        .select('*')
-        .is('deleted_at', null);
-      if (options?.signal) contactsQuery = contactsQuery.abortSignal(options.signal);
-      const { data, error } = await contactsQuery.in('id', uniqueIds);
+      // Em lotes: o PostgREST limita a resposta a 1000 linhas e a querystring do
+      // `in(...)` tem tamanho máximo. Sem os lotes, boards com muitos negócios
+      // ficavam com parte dos contatos sem resolver ("Sem contato").
+      const CHUNK_SIZE = 200;
+      const rows: DbContact[] = [];
 
-      if (error) return { data: null, error };
-      const contacts = await attachTags((data || []).map(c => transformContact(c as DbContact)));
+      for (let i = 0; i < uniqueIds.length; i += CHUNK_SIZE) {
+        const chunk = uniqueIds.slice(i, i + CHUNK_SIZE);
+        let contactsQuery = supabase
+          .from('contacts')
+          .select('*')
+          .is('deleted_at', null);
+        if (options?.signal) contactsQuery = contactsQuery.abortSignal(options.signal);
+        const { data, error } = await contactsQuery.in('id', chunk);
+
+        if (error) return { data: null, error };
+        rows.push(...((data || []) as DbContact[]));
+      }
+
+      const contacts = await attachTags(rows.map(c => transformContact(c)));
       return { data: contacts, error: null };
     } catch (e) {
       return { data: null, error: e as Error };

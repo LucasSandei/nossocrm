@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useToast } from '@/context/ToastContext';
-import { Contact, Company, ContactStage, PaginationState, ContactsServerFilters, DEFAULT_PAGE_SIZE, ContactSortableColumn } from '@/types';
+import { Contact, Company, ContactStage, DealItem, PaginationState, ContactsServerFilters, DEFAULT_PAGE_SIZE, ContactSortableColumn } from '@/types';
 import {
   useContacts,
   useContactsPaginated,
@@ -21,6 +21,7 @@ import {
 } from '@/lib/query/hooks/useContactsQuery';
 import { useCreateDeal } from '@/lib/query/hooks/useDealsQuery';
 import { useBoards } from '@/lib/query/hooks/useBoardsQuery';
+import { useActiveProducts } from '@/lib/query/hooks/useProductsQuery';
 import { useRealtimeSync } from '@/lib/realtime/useRealtimeSync';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { generateFakeContacts } from '@/lib/debug';
@@ -39,6 +40,7 @@ export const useContactsController = () => {
   // TanStack Query hooks
   const { data: companies = [], isLoading: companiesLoading } = useCompanies();
   const { data: boards = [] } = useBoards();
+  const { data: activeProducts = [] } = useActiveProducts();
   const createContactMutation = useCreateContact();
   const updateContactMutation = useUpdateContact();
   const deleteContactMutation = useDeleteContact();
@@ -578,6 +580,38 @@ export const useContactsController = () => {
     setCreateDealContactId(contactId);
   };
 
+  // Performance: lookup O(1) no catálogo de produtos ativos.
+  const activeProductsById = useMemo(
+    () => new Map(activeProducts.map(p => [p.id, p])),
+    [activeProducts]
+  );
+
+  /**
+   * Itens iniciais do negócio criado a partir de um contato.
+   *
+   * Quando o board tem produto padrão configurado, ele já entra na aba Produtos
+   * do card (com o valor correspondente) em vez de o card nascer vazio.
+   * O `id` do item é gerado pelo banco na inserção.
+   */
+  const buildDefaultDealItems = useCallback(
+    (board: typeof boards[0]): { items: DealItem[]; value: number } => {
+      const product = board.defaultProductId
+        ? activeProductsById.get(board.defaultProductId)
+        : undefined;
+      if (!product) return { items: [], value: 0 };
+
+      const item = {
+        productId: product.id,
+        name: product.name,
+        quantity: 1,
+        price: product.price,
+      } as DealItem;
+
+      return { items: [item], value: product.price };
+    },
+    [activeProductsById]
+  );
+
   // Create deal directly (used when only 1 board or from modal)
   const createDealDirectly = (contactId: string, board: typeof boards[0]) => {
     const contact = contacts.find(c => c.id === contactId);
@@ -594,8 +628,7 @@ export const useContactsController = () => {
     }
 
     const firstStage = board.stages[0];
-
-
+    const { items: defaultItems, value: defaultValue } = buildDefaultDealItems(board);
 
     createDealMutation.mutate(
       {
@@ -604,11 +637,11 @@ export const useContactsController = () => {
         companyId: contact.companyId || undefined,
         boardId: board.id,
         status: firstStage.id, // status = stageId (UUID do stage)
-        value: 0,
+        value: defaultValue,
         probability: 0,
         priority: 'medium',
         tags: [],
-        items: [],
+        items: defaultItems,
         customFields: {},
         owner: { name: 'Eu', avatar: '' },
         isWon: false,
@@ -651,6 +684,8 @@ export const useContactsController = () => {
     let successCount = 0;
     let errorCount = 0;
 
+    const { items: defaultItems, value: defaultValue } = buildDefaultDealItems(board);
+
     for (const contactId of ids) {
       const contact = contacts.find(c => c.id === contactId);
       if (!contact) { errorCount += 1; continue; }
@@ -661,11 +696,11 @@ export const useContactsController = () => {
           companyId: contact.companyId || undefined,
           boardId: board.id,
           status: stageId,
-          value: 0,
+          value: defaultValue,
           probability: 0,
           priority: 'medium',
           tags: [],
-          items: [],
+          items: defaultItems,
           customFields: {},
           owner: { name: 'Eu', avatar: '' },
           isWon: false,

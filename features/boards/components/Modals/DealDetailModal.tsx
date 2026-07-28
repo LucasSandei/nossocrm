@@ -134,7 +134,40 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
   const activitiesById = useMemo(() => new Map(activities.map((a) => [a.id, a])), [activities]);
 
   const deal = dealId ? dealsById.get(dealId) : undefined;
-  const contact = deal ? (contactsById.get(deal.contactId) ?? null) : null;
+
+  /**
+   * Dados do contato exibidos no card.
+   *
+   * A lista de `useContacts()` é limitada a 1000 registros, então contatos mais
+   * antigos não resolvem por ela. O `DealView` já traz os campos espelhados da
+   * aba Contatos (etiquetas, notas, campos personalizados), que servem de base;
+   * quando o contato está na lista carregada, ele tem prioridade por estar mais
+   * fresco.
+   */
+  const contact = useMemo(() => {
+    if (!deal?.contactId) return null;
+    const fromList = contactsById.get(deal.contactId) ?? null;
+    return {
+      id: deal.contactId,
+      name: fromList?.name ?? deal.contactName ?? '',
+      email: fromList?.email ?? deal.contactEmail ?? '',
+      phone: fromList?.phone ?? deal.contactPhone ?? '',
+      stage: fromList?.stage ?? deal.contactStage ?? '',
+      notes: fromList?.notes ?? deal.contactNotes ?? '',
+      tags: fromList?.tags ?? deal.contactTags ?? [],
+      customFields: fromList?.customFields ?? deal.contactCustomFields ?? {},
+    };
+  }, [contactsById, deal]);
+
+  /** Há algum valor preenchido nos campos personalizados do contato? */
+  const hasContactCustomFieldValues = useMemo(
+    () =>
+      contactCustomFieldDefinitions.some(field => {
+        const value = contact?.customFields?.[field.key];
+        return value !== undefined && value !== null && String(value).trim() !== '';
+      }),
+    [contact, contactCustomFieldDefinitions]
+  );
 
   // Determine the correct board for this deal
   const dealBoard = deal ? (boardsById.get(deal.boardId) ?? activeBoard) : activeBoard;
@@ -736,13 +769,16 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                   )}
                 </div>
 
-                {contact && ((contact.tags?.length || 0) > 0 || contactCustomFieldDefinitions.length > 0) && (
+                {contact &&
+                  ((contact.tags?.length || 0) > 0 ||
+                    !!contact.notes ||
+                    hasContactCustomFieldValues) && (
                   <div className="pt-4 border-t border-slate-100 dark:border-white/5 space-y-4">
                     {(contact.tags?.length || 0) > 0 && (
                       <div>
                         <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Etiquetas do Contato</h3>
                         <div className="flex flex-wrap gap-1.5">
-                          {contact.tags!.map(tag => (
+                          {contact.tags.map(tag => (
                             <span
                               key={tag}
                               className="text-[10px] bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 px-2 py-0.5 rounded-full"
@@ -753,7 +789,17 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                         </div>
                       </div>
                     )}
-                    {contactCustomFieldDefinitions.length > 0 && (
+                    {!!contact.notes && (
+                      <div>
+                        <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2">
+                          <FileText size={14} /> Notas do Contato
+                        </h3>
+                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                          {contact.notes}
+                        </p>
+                      </div>
+                    )}
+                    {hasContactCustomFieldValues && (
                       <div>
                         <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Campos Personalizados do Contato</h3>
                         <div className="space-y-1.5">
