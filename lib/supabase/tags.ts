@@ -24,8 +24,13 @@ async function getCurrentOrganizationId(): Promise<string | null> {
   return (profile as any)?.organization_id ?? null;
 }
 
+/**
+ * Mesma normalização usada no card do board e na API pública: sem espaços nas
+ * pontas e sem espaços repetidos no meio, para "Base  antiga" e "Base antiga"
+ * não virarem duas etiquetas diferentes no catálogo.
+ */
 function normalizeTagName(name: string): string {
-  return name.trim();
+  return name.trim().replace(/\s+/g, ' ');
 }
 
 export const tagsService = {
@@ -38,6 +43,114 @@ export const tagsService = {
       .order('name');
     if (error) return { data: [], error };
     return { data: (data || []).map(t => ({ id: t.id, name: t.name, color: t.color || undefined })), error: null };
+  },
+
+  /**
+   * Lista as etiquetas com a quantidade de contatos de cada uma.
+   *
+   * A contagem vem paginada porque `contact_tags` pode passar do teto de 1000
+   * linhas por resposta do PostgREST.
+   */
+  async listWithUsage(): Promise<{ data: Array<Tag & { contactCount: number }>; error: Error | null }> {
+    if (!supabase) return { data: [], error: new Error('Supabase não configurado') };
+
+    const { data: tags, error } = await tagsService.list();
+    if (error) return { data: [], error };
+
+    const counts = new Map<string, number>();
+    const PAGE_SIZE = 1000;
+    let offset = 0;
+
+    while (true) {
+      const { data, error: countError } = await supabase
+        .from('contact_tags')
+        .select('tag_id')
+        .order('contact_id', { ascending: true })
+        .order('tag_id', { ascending: true })
+        .range(offset, offset + PAGE_SIZE - 1);
+      if (countError) return { data: [], error: countError };
+
+      const rows = data || [];
+      for (const row of rows) counts.set(row.tag_id, (counts.get(row.tag_id) || 0) + 1);
+
+      if (rows.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
+    }
+
+    return {
+      data: tags.map(t => ({ ...t, contactCount: counts.get(t.id) || 0 })),
+      error: null,
+    };
+  },
+
+  /** Cria uma etiqueta no catálogo. Nome duplicado (case-insensitive) é rejeitado. */
+  async create(name: string): Promise<{ data: Tag | null; error: Error | null }> {
+    if (!supabase) return { data: null, error: new Error('Supabase não configurado') };
+    const cleanName = normalizeTagName(name);
+    if (!cleanName) return { data: null, error: new Error('Nome da etiqueta é obrigatório') };
+
+    const orgId = await getCurrentOrganizationId();
+    if (!orgId) return { data: null, error: new Error('Organização não identificada') };
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('tags')
+      .select('id, name')
+      .eq('organization_id', orgId);
+    if (fetchError) return { data: null, error: fetchError };
+
+    const duplicate = (existing || []).find(
+      t => t.name.toLowerCase() === cleanName.toLowerCase()
+    );
+    if (duplicate) {
+      return { data: null, error: new Error(`A etiqueta "${duplicate.name}" já existe.`) };
+    }
+
+    const { data, error } = await supabase
+      .from('tags')
+      .insert({ name: cleanName, organization_id: orgId })
+      .select('id, name, color')
+      .single();
+    if (error) return { data: null, error };
+    return { data: { id: data.id, name: data.name, color: data.color || undefined }, error: null };
+  },
+
+  /**
+   * Renomeia uma etiqueta. Como contatos apontam para o id, o novo nome
+   * aparece automaticamente em todos eles.
+   */
+  async rename(id: string, name: string): Promise<{ error: Error | null }> {
+    if (!supabase) return { error: new Error('Supabase não configurado') };
+    const cleanName = normalizeTagName(name);
+    if (!cleanName) return { error: new Error('Nome da etiqueta é obrigatório') };
+
+    const orgId = await getCurrentOrganizationId();
+    if (!orgId) return { error: new Error('Organização não identificada') };
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('tags')
+      .select('id, name')
+      .eq('organization_id', orgId);
+    if (fetchError) return { error: fetchError };
+
+    const duplicate = (existing || []).find(
+      t => t.id !== id && t.name.toLowerCase() === cleanName.toLowerCase()
+    );
+    if (duplicate) {
+      return { error: new Error(`A etiqueta "${duplicate.name}" já existe.`) };
+    }
+
+    const { error } = await supabase.from('tags').update({ name: cleanName }).eq('id', id);
+    return { error };
+  },
+
+  /**
+   * Remove a etiqueta do catálogo. As associações em `contact_tags` somem
+   * junto por ON DELETE CASCADE.
+   */
+  async remove(id: string): Promise<{ error: Error | null }> {
+    if (!supabase) return { error: new Error('Supabase não configurado') };
+    const { error } = await supabase.from('tags').delete().eq('id', id);
+    return { error };
   },
 
   /**

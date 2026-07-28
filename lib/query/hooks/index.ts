@@ -246,6 +246,10 @@ export {
 // Tags (shared catalog + contact assignment)
 export {
   useTags,
+  useTagsWithUsage,
+  useCreateTag,
+  useRenameTag,
+  useDeleteTag,
   useBulkAssignContactTags,
 } from './useTagsQuery';
 

@@ -74,13 +74,7 @@ const GeneralSettings: React.FC<GeneralSettingsProps> = ({ hash, isAdmin }) => {
 
       {isAdmin && (
         <>
-          <TagsManager
-            availableTags={controller.availableTags}
-            newTagName={controller.newTagName}
-            setNewTagName={controller.setNewTagName}
-            onAddTag={controller.handleAddTag}
-            onRemoveTag={controller.removeTag}
-          />
+          <TagsManager />
 
           <ContactCustomFieldsManager />
         </>
