@@ -262,21 +262,38 @@ export const dealsService = {
       // Embedded select: traz deal_items junto com deals em UMA query
       // Elimina N+1: antes carregava TODOS items e filtrava no cliente
       // Agora o Postgres já retorna os items aninhados por deal
-      // Safety limit: cap at 1000 deals for non-paginated access
-      let dealsQuery = supabase
-        .from('deals')
-        .select(`
-          *,
-          deal_items (*)
-        `);
-      if (options?.signal) dealsQuery = dealsQuery.abortSignal(options.signal);
-      const { data, error } = await dealsQuery
-        .order('created_at', { ascending: false })
-        .limit(1000);
+      //
+      // Paginado: o PostgREST corta a resposta em 1000 linhas. Com um board
+      // grande (cadastrar centenas de contatos de uma vez), um `.limit(1000)`
+      // fazia negócios sumirem do Kanban sem qualquer aviso.
+      const PAGE_SIZE = 1000;
+      const MAX_DEALS = 10000; // guarda contra carregar a base inteira sem querer
+      const rows: DbDealWithItems[] = [];
+      let offset = 0;
 
-      if (error) return { data: null, error };
+      while (offset < MAX_DEALS) {
+        let dealsQuery = supabase
+          .from('deals')
+          .select(`
+            *,
+            deal_items (*)
+          `);
+        if (options?.signal) dealsQuery = dealsQuery.abortSignal(options.signal);
+        const { data, error } = await dealsQuery
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(offset, offset + PAGE_SIZE - 1);
 
-      const deals = (data || []).map(d => transformDeal(d as DbDealWithItems));
+        if (error) return { data: null, error };
+
+        const page = (data || []) as DbDealWithItems[];
+        rows.push(...page);
+
+        if (page.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
+
+      const deals = rows.map(d => transformDeal(d));
       return { data: deals, error: null };
     } catch (e) {
       return { data: null, error: e as Error };
@@ -447,6 +464,135 @@ export const dealsService = {
       };
     } catch (e) {
       return { data: null, error: e as Error };
+    }
+  },
+
+  /**
+   * Cria vários negócios de uma vez, em lotes.
+   *
+   * A criação individual faz uma validação de board e uma atualização de cache
+   * por negócio, o que inviabiliza cadastrar centenas de contatos num board
+   * (seriam centenas de idas ao servidor). Aqui o board é resolvido uma única
+   * vez e as linhas vão em lotes.
+   *
+   * Contatos que já têm negócio no board são ignorados, para a ação poder ser
+   * repetida sem duplicar cards.
+   *
+   * @returns Quantidade criada, ignorada por já existir, e erro se houver.
+   */
+  async createMany(input: {
+    boardId: string;
+    stageId: string;
+    contacts: Array<{ id: string; name: string; clientCompanyId?: string | null }>;
+    items?: Array<Omit<DealItem, 'id'>>;
+    value?: number;
+    priority?: Deal['priority'];
+    ownerId?: string | null;
+  }): Promise<{ createdCount: number; skippedCount: number; error: Error | null }> {
+    try {
+      if (!supabase) {
+        return { createdCount: 0, skippedCount: 0, error: new Error('Supabase não configurado') };
+      }
+
+      const boardId = requireUUID(input.boardId, 'Board ID');
+      const stageId = sanitizeUUID(input.stageId);
+      if (!stageId) {
+        return { createdCount: 0, skippedCount: 0, error: new Error('Estágio inválido') };
+      }
+
+      const { data: board, error: boardError } = await supabase
+        .from('boards')
+        .select('id, organization_id')
+        .eq('id', boardId)
+        .maybeSingle();
+      if (boardError || !board) {
+        return { createdCount: 0, skippedCount: 0, error: new Error(`Board não encontrado: ${boardId}`) };
+      }
+
+      const organizationId =
+        sanitizeUUID((board as any).organization_id) || (await getCurrentOrganizationId());
+      if (!organizationId) {
+        return { createdCount: 0, skippedCount: 0, error: new Error('Organização não identificada') };
+      }
+
+      const contactIds = input.contacts.map(c => c.id).filter(Boolean);
+
+      // Quem já tem negócio neste board não entra de novo. Consulta em lotes
+      // porque o `in(...)` tem limite de tamanho de querystring.
+      const existing = new Set<string>();
+      const LOOKUP_CHUNK = 200;
+      for (let i = 0; i < contactIds.length; i += LOOKUP_CHUNK) {
+        const chunk = contactIds.slice(i, i + LOOKUP_CHUNK);
+        const { data, error } = await supabase
+          .from('deals')
+          .select('contact_id')
+          .eq('board_id', boardId)
+          .in('contact_id', chunk);
+        if (error) return { createdCount: 0, skippedCount: 0, error };
+        for (const row of data || []) existing.add((row as any).contact_id);
+      }
+
+      const toCreate = input.contacts.filter(c => !existing.has(c.id));
+      const skippedCount = input.contacts.length - toCreate.length;
+      if (toCreate.length === 0) {
+        return { createdCount: 0, skippedCount, error: null };
+      }
+
+      const now = new Date().toISOString();
+      const INSERT_CHUNK = 200;
+      let createdCount = 0;
+
+      for (let i = 0; i < toCreate.length; i += INSERT_CHUNK) {
+        const chunk = toCreate.slice(i, i + INSERT_CHUNK);
+
+        const rows = chunk.map(contact => ({
+          organization_id: organizationId,
+          title: contact.name,
+          value: input.value ?? 0,
+          probability: 0,
+          status: stageId,
+          priority: input.priority || 'medium',
+          board_id: boardId,
+          stage_id: stageId,
+          contact_id: sanitizeUUID(contact.id),
+          client_company_id: sanitizeUUID(contact.clientCompanyId || undefined),
+          tags: [],
+          custom_fields: {},
+          owner_id: sanitizeUUID(input.ownerId || undefined),
+          is_won: false,
+          is_lost: false,
+          closed_at: null,
+          created_at: now,
+          updated_at: now,
+        }));
+
+        const { data: insertedDeals, error } = await supabase
+          .from('deals')
+          .insert(rows)
+          .select('id');
+        if (error) return { createdCount, skippedCount, error };
+
+        createdCount += (insertedDeals || []).length;
+
+        if (input.items && input.items.length > 0 && insertedDeals) {
+          const itemRows = insertedDeals.flatMap((deal: any) =>
+            input.items!.map(item => ({
+              deal_id: deal.id,
+              organization_id: organizationId,
+              product_id: sanitizeUUID(item.productId) || null,
+              name: item.name,
+              quantity: item.quantity,
+              price: item.price,
+            }))
+          );
+          const { error: itemsError } = await supabase.from('deal_items').insert(itemRows);
+          if (itemsError) return { createdCount, skippedCount, error: itemsError };
+        }
+      }
+
+      return { createdCount, skippedCount, error: null };
+    } catch (e) {
+      return { createdCount: 0, skippedCount: 0, error: e as Error };
     }
   },
 

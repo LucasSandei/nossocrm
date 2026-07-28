@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Image from 'next/image';
 import { DealView } from '@/types';
 import { Building2, Hourglass, Trophy, XCircle } from 'lucide-react';
@@ -28,6 +28,13 @@ interface DealCardProps {
   /** Callback to open move-to-stage modal for keyboard accessibility */
   onMoveToStage?: (dealId: string) => void;
 }
+
+// Performance: formatadores reaproveitados entre todos os cards da lista.
+const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit' });
+const FULL_DATE_FORMATTER = new Intl.DateTimeFormat('pt-BR', {
+  dateStyle: 'short',
+  timeStyle: 'short',
+});
 
 // Check if deal is closed (won or lost)
 const isDealClosed = (deal: DealView) => deal.isWon || deal.isLost;
@@ -63,6 +70,18 @@ const DealCardComponent: React.FC<DealCardProps> = ({
 
   // Etiquetas são do contato (mesmo campo da aba Contatos), não do negócio.
   const contactTags = deal.contactTags || [];
+
+  // Data de entrada do lead no board. Curta no card (dd/mm), completa no title.
+  const { entryDate, entryDateFull } = useMemo(() => {
+    const parsed = deal.createdAt ? new Date(deal.createdAt) : null;
+    if (!parsed || Number.isNaN(parsed.getTime())) {
+      return { entryDate: null, entryDateFull: '' };
+    }
+    return {
+      entryDate: SHORT_DATE_FORMATTER.format(parsed),
+      entryDateFull: FULL_DATE_FORMATTER.format(parsed),
+    };
+  }, [deal.createdAt]);
 
   const handleToggleMenu = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -207,7 +226,8 @@ const DealCardComponent: React.FC<DealCardProps> = ({
         </div>
       )}
 
-      <div className="flex gap-1 mb-2 flex-wrap">
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div className="flex gap-1 flex-wrap min-w-0">
         {/* Won/Lost status badge */}
         {deal.isWon && (
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-800/40 text-green-700 dark:text-green-300 border border-green-200 dark:border-green-700">
@@ -228,6 +248,17 @@ const DealCardComponent: React.FC<DealCardProps> = ({
             {tag}
           </span>
         ))}
+        </div>
+
+        {/* Data de entrada do lead no board */}
+        {entryDate && (
+          <span
+            className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500 tabular-nums"
+            title={`Entrada em ${entryDateFull}`}
+          >
+            {entryDate}
+          </span>
+        )}
       </div>
 
       <h4

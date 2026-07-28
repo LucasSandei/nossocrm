@@ -6,6 +6,11 @@ import { MoveToStageModal } from '../Modals/MoveToStageModal';
 import { SkeletonDealCard } from '@/components/ui/Skeleton';
 import { useLifecycleStages } from '@/lib/query/hooks/useLifecycleStagesQuery';
 
+/** Cards revelados por vez em cada coluna (scroll infinito). */
+const CARDS_PER_PAGE = 50;
+/** Distância do fim da coluna que dispara o carregamento do próximo lote. */
+const SCROLL_THRESHOLD_PX = 200;
+
 /**
  * UI: Drop highlight should follow the stage color.
  *
@@ -141,8 +146,39 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
       totals.set(deal.status, (totals.get(deal.status) ?? 0) + (deal.value ?? 0));
     }
+
+    // Lead mais novo sempre no topo, venha de cadastro manual, importação ou
+    // automação. A ordenação é explícita aqui porque o cache da view recebe
+    // escritas otimistas e eventos de Realtime que não preservam a ordem do
+    // servidor.
+    for (const list of map.values()) {
+      list.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    }
+
     return { map, totals };
   }, [filteredDeals]);
+
+  /**
+   * Quantos cards cada coluna já revelou. Colunas com centenas de negócios
+   * travariam a tela se renderizassem tudo de uma vez, então cada uma começa
+   * com um lote e cresce conforme o usuário rola até o fim.
+   */
+  const [visibleByStage, setVisibleByStage] = useState<Record<string, number>>({});
+
+  const handleColumnScroll = useCallback(
+    (stageId: string, total: number) => (e: React.UIEvent<HTMLDivElement>) => {
+      const el = e.currentTarget;
+      const reachedBottom = el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD_PX;
+      if (!reachedBottom) return;
+
+      setVisibleByStage(prev => {
+        const current = prev[stageId] ?? CARDS_PER_PAGE;
+        if (current >= total) return prev;
+        return { ...prev, [stageId]: current + CARDS_PER_PAGE };
+      });
+    },
+    []
+  );
 
   // Performance: evita `find` por stage (O(S*L)). Map é O(1) por lookup.
   const lifecycleStageNameById = useMemo(() => {
@@ -193,6 +229,10 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
         const stageDeals = dealsByStageId.map.get(stage.id) ?? [];
         const stageValue = dealsByStageId.totals.get(stage.id) ?? 0;
         const isOver = dragOverStage === stage.id && draggingId !== null;
+
+        const visibleCount = Math.min(visibleByStage[stage.id] ?? CARDS_PER_PAGE, stageDeals.length);
+        const visibleDeals = stageDeals.slice(0, visibleCount);
+        const remainingCount = stageDeals.length - visibleCount;
 
         // Resolve linked stage name
         const linkedStageName =
@@ -261,6 +301,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
             <div
               role="list"
               aria-label={`Negócios em ${stage.label}`}
+              onScroll={handleColumnScroll(stage.id, stageDeals.length)}
               className={`flex-1 p-2 overflow-y-auto space-y-2 bg-slate-100/50 dark:bg-black/20 scrollbar-thin min-h-[100px]`}
             >
               {/* Skeleton: exibido durante carregamento inicial */}
@@ -292,7 +333,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                 </div>
               )}
 
-              {!isLoading && stageDeals.map(deal => (
+              {!isLoading && visibleDeals.map(deal => (
                 <div key={deal.id} role="listitem">
                   <DealCard
                     deal={deal}
@@ -315,6 +356,22 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                   />
                 </div>
               ))}
+
+              {/* Rodapé do lote: indica que ainda há cards e serve de alvo do scroll */}
+              {!isLoading && remainingCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleByStage(prev => ({
+                      ...prev,
+                      [stage.id]: (prev[stage.id] ?? CARDS_PER_PAGE) + CARDS_PER_PAGE,
+                    }))
+                  }
+                  className="w-full py-2 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+                >
+                  Carregar mais {Math.min(remainingCount, CARDS_PER_PAGE)} de {remainingCount}
+                </button>
+              )}
             </div>
           </div>
         );

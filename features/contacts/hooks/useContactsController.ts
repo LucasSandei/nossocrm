@@ -19,9 +19,10 @@ import {
   useDeleteCompany,
   useContactHasDeals,
 } from '@/lib/query/hooks/useContactsQuery';
-import { useCreateDeal } from '@/lib/query/hooks/useDealsQuery';
+import { useCreateDeal, useBulkCreateDeals } from '@/lib/query/hooks/useDealsQuery';
 import { useBoards } from '@/lib/query/hooks/useBoardsQuery';
 import { useActiveProducts } from '@/lib/query/hooks/useProductsQuery';
+import { contactsService } from '@/lib/supabase';
 import { useRealtimeSync } from '@/lib/realtime/useRealtimeSync';
 import { normalizePhoneE164 } from '@/lib/phone';
 import { generateFakeContacts } from '@/lib/debug';
@@ -53,6 +54,7 @@ export const useContactsController = () => {
   const deleteCompanyMutation = useDeleteCompany();
   const bulkDeleteCompaniesMutation = useBulkDeleteCompanies();
   const createDealMutation = useCreateDeal();
+  const bulkCreateDealsMutation = useBulkCreateDeals();
 
   // Enable realtime sync
   useRealtimeSync('contacts');
@@ -681,42 +683,45 @@ export const useContactsController = () => {
     const ids = Array.from(selectedIds);
     if (!board || ids.length === 0) return;
 
-    let successCount = 0;
-    let errorCount = 0;
-
     const { items: defaultItems, value: defaultValue } = buildDefaultDealItems(board);
 
-    for (const contactId of ids) {
-      const contact = contacts.find(c => c.id === contactId);
-      if (!contact) { errorCount += 1; continue; }
-      try {
-        await createDealMutation.mutateAsync({
-          title: contact.name,
-          contactId: contact.id,
-          companyId: contact.companyId || undefined,
-          boardId: board.id,
-          status: stageId,
-          value: defaultValue,
-          probability: 0,
-          priority: 'medium',
-          tags: [],
-          items: defaultItems,
-          customFields: {},
-          owner: { name: 'Eu', avatar: '' },
-          isWon: false,
-          isLost: false,
-        });
-        successCount += 1;
-      } catch {
-        errorCount += 1;
-      }
-    }
+    try {
+      // Busca os contatos pelos IDs selecionados em vez de procurá-los na
+      // página carregada: com "selecionar todos", a seleção cobre a base
+      // inteira, mas só ~50 contatos estão em memória.
+      const { data: selectedContacts, error: contactsError } = await contactsService.getByIds(ids);
+      if (contactsError) throw contactsError;
 
-    if (successCount > 0) {
-      addToast(`${successCount} negócio(s) criado(s) no board "${board.name}"`, 'success');
-    }
-    if (errorCount > 0) {
-      addToast(`Falha ao criar negócio para ${errorCount} contato(s)`, 'error');
+      const { createdCount, skippedCount, error } = await bulkCreateDealsMutation.mutateAsync({
+        boardId: board.id,
+        stageId,
+        contacts: (selectedContacts || []).map(c => ({
+          id: c.id,
+          name: c.name,
+          clientCompanyId: c.clientCompanyId || c.companyId || null,
+        })),
+        items: defaultItems,
+        value: defaultValue,
+      });
+      if (error) throw error;
+
+      if (createdCount > 0) {
+        addToast(`${createdCount} negócio(s) criado(s) no board "${board.name}"`, 'success');
+      }
+      if (skippedCount > 0) {
+        addToast(
+          `${skippedCount} contato(s) já tinham negócio neste board e foram ignorados.`,
+          'info'
+        );
+      }
+      if (createdCount === 0 && skippedCount === 0) {
+        addToast('Nenhum negócio criado.', 'info');
+      }
+    } catch (err) {
+      addToast(
+        err instanceof Error ? err.message : 'Erro ao cadastrar contatos no board.',
+        'error'
+      );
     }
 
     setSelectedIds(new Set());

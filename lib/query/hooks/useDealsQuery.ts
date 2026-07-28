@@ -348,6 +348,27 @@ export const useCreateDeal = () => {
 };
 
 /**
+ * Cria vários negócios de uma vez (ação em massa "Cadastrar em board").
+ *
+ * Sem otimismo: a lista pode ter centenas de itens, então vale mais recarregar
+ * a view uma única vez ao final do que montar centenas de cards temporários.
+ */
+export const useBulkCreateDeals = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: Parameters<typeof dealsService.createMany>[0]) => {
+      return dealsService.createMany(input);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: DEALS_VIEW_KEY });
+      queryClient.invalidateQueries({ queryKey: queryKeys.deals.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
+    },
+  });
+};
+
+/**
  * Hook to update a deal
  * Usa DEALS_VIEW_KEY como única fonte de verdade
  */
