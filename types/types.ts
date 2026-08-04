@@ -309,7 +309,12 @@ export interface Activity {
   /** IDs dos contatos participantes (opcional). */
   participantContactIds?: string[];
   dealTitle: string;
-  type: 'CALL' | 'MEETING' | 'EMAIL' | 'TASK' | 'NOTE' | 'STATUS_CHANGE';
+  /**
+   * Tipo do registro. Divide-se em dois grupos (ver `lib/utils/activityKind.ts`):
+   * - TAREFAS (agendáveis e concluíveis): CALL, MEETING, EMAIL, TASK, MESSAGE
+   * - ATIVIDADES de histórico (timeline do card): NOTE, STATUS_CHANGE
+   */
+  type: 'CALL' | 'MEETING' | 'EMAIL' | 'TASK' | 'MESSAGE' | 'NOTE' | 'STATUS_CHANGE';
   title: string;
   description?: string;
   date: string;

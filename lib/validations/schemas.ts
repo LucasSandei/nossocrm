@@ -161,11 +161,13 @@ export const activityTypeSchema = z.enum([
   'MEETING',
   'EMAIL',
   'TASK',
+  'MESSAGE',
   'NOTE',
   'STATUS_CHANGE',
 ]);
 
-export const activityFormTypeSchema = z.enum(['CALL', 'MEETING', 'EMAIL', 'TASK'], {
+/** Só tipos de TAREFA são criáveis pelo formulário (NOTE/STATUS_CHANGE são gerados pelo sistema). */
+export const activityFormTypeSchema = z.enum(['CALL', 'MEETING', 'EMAIL', 'TASK', 'MESSAGE'], {
   message: msg('SELECTION_INVALID'),
 });
 

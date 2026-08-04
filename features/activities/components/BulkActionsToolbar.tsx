@@ -40,7 +40,7 @@ export const BulkActionsToolbar: React.FC<BulkActionsToolbarProps> = ({
                         {selectedCount}
                     </div>
                     <span className="font-medium">
-                        {selectedCount === 1 ? '1 atividade selecionada' : `${selectedCount} atividades selecionadas`}
+                        {selectedCount === 1 ? '1 tarefa selecionada' : `${selectedCount} tarefas selecionadas`}
                     </span>
                 </div>
 

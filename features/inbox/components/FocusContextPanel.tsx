@@ -1348,14 +1348,16 @@ export const FocusContextPanel: React.FC<FocusContextPanelProps> = ({
                                                                                 activity.type === 'MEETING' ? 'bg-orange-500/20 text-orange-400' :
                                                                                     activity.type === 'NOTE' ? 'bg-emerald-500/20 text-emerald-400' :
                                                                                         activity.type === 'TASK' ? 'bg-yellow-500/20 text-yellow-400' :
-                                                                                            'bg-slate-700/50 text-slate-400';
+                                                                                            activity.type === 'MESSAGE' ? 'bg-teal-500/20 text-teal-400' :
+                                                                                                'bg-slate-700/50 text-slate-400';
                                                                     const typeLabel =
                                                                         activity.type === 'CALL' ? 'Ligação' :
                                                                             activity.type === 'EMAIL' ? 'Email' :
                                                                                 activity.type === 'MEETING' ? 'Reunião' :
                                                                                     activity.type === 'NOTE' ? 'Nota' :
                                                                                         activity.type === 'TASK' ? 'Tarefa' :
-                                                                                            activity.type;
+                                                                                            activity.type === 'MESSAGE' ? 'Mensagem' :
+                                                                                                activity.type;
                                                                     return (
                                                                         <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide shrink-0 ${typeColor}`}>
                                                                             {typeLabel}

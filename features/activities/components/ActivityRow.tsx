@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import { Phone, Users, Mail, CheckSquare, Clock, Trash2, Edit2, CheckCircle2, Circle, Building2 } from 'lucide-react';
+import { Phone, Users, Mail, CheckSquare, Clock, Trash2, Edit2, CheckCircle2, Circle, Building2, MessageSquare, StickyNote } from 'lucide-react';
 import { useBoards } from '@/lib/query/hooks/useBoardsQuery';
 import { Activity, Deal, Contact, Company } from '@/types';
 
@@ -37,6 +37,8 @@ const ActivityRowComponent: React.FC<ActivityRowProps> = ({
             case 'MEETING': return <Users size={16} className="text-purple-500" />;
             case 'EMAIL': return <Mail size={16} className="text-green-500" />;
             case 'TASK': return <CheckSquare size={16} className="text-orange-500" />;
+            case 'MESSAGE': return <MessageSquare size={16} className="text-teal-500" />;
+            case 'NOTE': return <StickyNote size={16} className="text-yellow-500" />;
             case 'STATUS_CHANGE': return <CheckCircle2 size={16} className="text-slate-500" />;
             default: return <Circle size={16} className="text-slate-400" />;
         }

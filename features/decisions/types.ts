@@ -104,7 +104,7 @@ export type ActionType =
 
 export interface ActionPayload {
   // Para create_activity / schedule_call / schedule_meeting
-  activityType?: 'CALL' | 'MEETING' | 'EMAIL' | 'TASK';
+  activityType?: 'CALL' | 'MEETING' | 'EMAIL' | 'TASK' | 'MESSAGE';
   activityTitle?: string;
   activityDate?: string;
   activityDescription?: string;

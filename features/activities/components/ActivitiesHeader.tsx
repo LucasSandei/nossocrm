@@ -8,22 +8,7 @@ interface ActivitiesHeaderProps {
   dateFilter?: 'ALL' | 'overdue' | 'today' | 'upcoming';
 }
 
-/**
- * Componente React `ActivitiesHeader`.
- *
- * @param {ActivitiesHeaderProps} {
-  viewMode,
-  setViewMode,
-  onNewActivity,
-  dateFilter = 'ALL',
-} - Parâmetro `{
-  viewMode,
-  setViewMode,
-  onNewActivity,
-  dateFilter = 'ALL',
-}`.
- * @returns {Element} Retorna um valor do tipo `Element`.
- */
+/** Cabeçalho da aba **Tarefas** (só tarefas; atividades ficam na timeline do card). */
 export const ActivitiesHeader: React.FC<ActivitiesHeaderProps> = ({
   viewMode,
   setViewMode,
@@ -43,10 +28,12 @@ export const ActivitiesHeader: React.FC<ActivitiesHeaderProps> = ({
     <div className="flex justify-between items-center mb-8">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white font-display">
-          Atividades
+          Tarefas
         </h1>
         <div className="mt-1 flex items-center gap-2">
-          <p className="text-slate-500 dark:text-slate-400">Gerencie suas tarefas e compromissos</p>
+          <p className="text-slate-500 dark:text-slate-400">
+            O que precisa ser feito: ligações, emails, mensagens, reuniões e tarefas
+          </p>
           {filterLabel && (
             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-primary-100 text-primary-700 dark:bg-primary-500/20 dark:text-primary-300">
               Filtro: {filterLabel}
@@ -82,7 +69,7 @@ export const ActivitiesHeader: React.FC<ActivitiesHeaderProps> = ({
           className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-4 py-2.5 rounded-lg font-medium transition-colors shadow-lg shadow-primary-600/20"
         >
           <Plus size={20} />
-          Nova Atividade
+          Nova Tarefa
         </button>
       </div>
     </div>

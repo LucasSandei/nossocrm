@@ -27,7 +27,7 @@ export const PRIMARY_NAV: PrimaryNavItem[] = [
   { id: 'messaging', label: 'Mensagens', href: '/messaging', icon: MessageSquare },
   { id: 'boards', label: 'Boards', href: '/boards', icon: KanbanSquare },
   { id: 'contacts', label: 'Contatos', href: '/contacts', icon: Users },
-  { id: 'activities', label: 'Atividades', href: '/activities', icon: CheckSquare },
+  { id: 'activities', label: 'Tarefas', href: '/activities', icon: CheckSquare },
   { id: 'more', label: 'Mais', icon: MoreHorizontal },
 ];
 

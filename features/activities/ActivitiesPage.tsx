@@ -11,8 +11,13 @@ import { BulkActionsToolbar } from './components/BulkActionsToolbar';
 import { useToast } from '@/context/ToastContext';
 
 /**
- * Componente React `ActivitiesPage`.
- * @returns {Element} Retorna um valor do tipo `Element`.
+ * Aba **Tarefas** (rota `/activities`).
+ *
+ * Mostra somente TAREFAS a fazer — ligações, emails, mensagens, reuniões e
+ * tarefas — ordenadas por urgência: atrasadas, depois hoje, depois as próximas.
+ *
+ * O histórico (notas e mudanças de estágio) NÃO aparece aqui: ele vive na
+ * timeline do card do negócio. Ver `lib/utils/activityKind.ts`.
  */
 export const ActivitiesPage: React.FC = () => {
     const {
@@ -31,6 +36,7 @@ export const ActivitiesPage: React.FC = () => {
         formData,
         setFormData,
         filteredActivities,
+        groupedActivities,
         deals,
         contacts,
         companies,
@@ -64,13 +70,13 @@ export const ActivitiesPage: React.FC = () => {
         selectedActivities.forEach(id => {
             handleToggleComplete(id);
         });
-        addToast(`${selectedActivities.size} atividades concluídas!`, 'success');
+        addToast(`${selectedActivities.size} tarefas concluídas!`, 'success');
         handleClearSelection();
     };
 
     const handleSnoozeAll = () => {
         // In a real app, this would update the date of each activity
-        addToast(`${selectedActivities.size} atividades adiadas para amanhã!`, 'success');
+        addToast(`${selectedActivities.size} tarefas adiadas para amanhã!`, 'success');
         handleClearSelection();
     };
 
@@ -93,6 +99,7 @@ export const ActivitiesPage: React.FC = () => {
                     />
                     <ActivitiesList
                         activities={filteredActivities}
+                        groups={groupedActivities}
                         deals={deals}
                         contacts={contacts}
                         companies={companies}

@@ -1057,7 +1057,7 @@ export function createCRMTools(context: CRMCallOptions, userId: string) {
                 description: z.string().optional(),
                 dueDate: z.string().optional().describe('Data de vencimento ISO'),
                 dealId: z.string().optional(),
-                type: z.enum(['CALL', 'MEETING', 'EMAIL', 'TASK']).optional().default('TASK'),
+                type: z.enum(['CALL', 'MEETING', 'EMAIL', 'TASK', 'MESSAGE']).optional().default('TASK'),
             }),
             needsApproval: !bypassApproval,
             execute: async ({ title, description, dueDate, dealId, type }) => {
@@ -1107,7 +1107,7 @@ export function createCRMTools(context: CRMCallOptions, userId: string) {
                 createFollowUpTask: z.boolean().optional().default(false).describe('Se true, cria 1 tarefa por deal após mover (guardrails aplicados)'),
                 followUpTitle: z.string().optional().describe('Título da tarefa de follow-up'),
                 followUpDueInDays: z.number().int().positive().optional().default(2),
-                followUpType: z.enum(['CALL', 'MEETING', 'EMAIL', 'TASK']).optional().default('TASK'),
+                followUpType: z.enum(['CALL', 'MEETING', 'EMAIL', 'TASK', 'MESSAGE']).optional().default('TASK'),
             }),
             needsApproval: !bypassApproval,
             execute: async ({ dealIds, boardId, stageName, stageId, allowPartial, maxDeals, createFollowUpTask, followUpTitle, followUpDueInDays, followUpType }) => {
@@ -1319,7 +1319,7 @@ export function createCRMTools(context: CRMCallOptions, userId: string) {
                 description: z.string().optional(),
                 dealId: z.string().optional(),
                 contactId: z.string().optional(),
-                type: z.enum(['CALL', 'MEETING', 'EMAIL', 'TASK']).optional().default('CALL'),
+                type: z.enum(['CALL', 'MEETING', 'EMAIL', 'TASK', 'MESSAGE']).optional().default('CALL'),
                 date: z.string().optional().describe('ISO (padrão: agora)'),
             }),
             needsApproval: !bypassApproval,

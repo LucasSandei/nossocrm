@@ -5,6 +5,7 @@
 
 import { Activity, DealView } from '@/types';
 import { Decision, AnalyzerResult, AnalyzerConfig, SuggestedAction } from '../types';
+import { TASK_ACTIVITY_TYPES, TASK_TYPE_LABELS, toTaskType } from '@/lib/utils/activityKind';
 
 // Performance: reuse date formatter to avoid repeated `toLocaleDateString` allocations.
 const PT_BR_DATE_FORMATTER = new Intl.DateTimeFormat('pt-BR');
@@ -16,7 +17,8 @@ export const overdueActivitiesConfig: AnalyzerConfig = {
   enabled: true,
   params: {
     criticalDaysOverdue: 3,
-    includedTypes: ['CALL', 'MEETING', 'EMAIL', 'TASK'],
+    // Só TAREFAS atrasam; notas e mudanças de estágio são histórico.
+    includedTypes: [...TASK_ACTIVITY_TYPES],
   },
   maxDecisionsPerRun: 10,
   cooldownDays: 1,
@@ -25,10 +27,8 @@ export const overdueActivitiesConfig: AnalyzerConfig = {
 function generateReasoning(activity: Activity, daysOverdue: number, deal?: DealView): string {
   const parts: string[] = [];
   
-  const typeLabel = activity.type === 'CALL' ? 'Ligação' :
-                   activity.type === 'MEETING' ? 'Reunião' :
-                   activity.type === 'EMAIL' ? 'Email' : 'Tarefa';
-  
+  const typeLabel = TASK_TYPE_LABELS[toTaskType(activity.type)];
+
   parts.push(`${typeLabel} "${activity.title}" está ${daysOverdue} ${daysOverdue === 1 ? 'dia' : 'dias'} atrasada.`);
   
   if (deal) {
@@ -54,10 +54,8 @@ function generateSuggestedActions(activity: Activity, deal?: DealView): {
   tomorrow.setDate(tomorrow.getDate() + 1);
   tomorrow.setHours(10, 0, 0, 0);
 
-  // Cast to valid activity type (exclude NOTE and STATUS_CHANGE)
-  const validType = ['CALL', 'MEETING', 'EMAIL', 'TASK'].includes(activity.type) 
-    ? activity.type as 'CALL' | 'MEETING' | 'EMAIL' | 'TASK'
-    : 'TASK';
+  // Reduz a um tipo de tarefa válido (exclui NOTE e STATUS_CHANGE).
+  const validType = toTaskType(activity.type);
 
   // Primary action: Complete now or reschedule
   const primary: SuggestedAction = {
@@ -172,9 +170,11 @@ export function analyzeOverdueActivities(
 
     const { primary, alternatives } = generateSuggestedActions(activity, deal);
 
-    const typeLabel = activity.type === 'CALL' ? '📞 Ligação' :
-                     activity.type === 'MEETING' ? '📅 Reunião' :
-                     activity.type === 'EMAIL' ? '📧 Email' : '✅ Tarefa';
+    const TYPE_EMOJI: Record<string, string> = {
+      CALL: '📞', MEETING: '📅', EMAIL: '📧', TASK: '✅', MESSAGE: '💬',
+    };
+    const taskType = toTaskType(activity.type);
+    const typeLabel = `${TYPE_EMOJI[taskType]} ${TASK_TYPE_LABELS[taskType]}`;
 
     decisions.push({
       id: crypto.randomUUID(),

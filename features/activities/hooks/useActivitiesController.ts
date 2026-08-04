@@ -12,10 +12,19 @@ import {
 import { useDeals } from '@/lib/query/hooks/useDealsQuery';
 import { useContacts, useCompanies } from '@/lib/query/hooks/useContactsQuery';
 import { useRealtimeSync } from '@/lib/realtime/useRealtimeSync';
+import {
+  groupTasksByDueDate,
+  isTaskActivity,
+  sortTasksByUrgency,
+  toTaskType,
+  type TaskActivityType,
+} from '@/lib/utils/activityKind';
 
 /**
- * Hook React `useActivitiesController` que encapsula uma lógica reutilizável.
- * @returns {{ viewMode: "list" | "calendar"; setViewMode: Dispatch<SetStateAction<"list" | "calendar">>; searchTerm: string; setSearchTerm: Dispatch<SetStateAction<string>>; ... 18 more ...; handleSubmit: (e: FormEvent<...>) => void; }} Retorna um valor do tipo `{ viewMode: "list" | "calendar"; setViewMode: Dispatch<SetStateAction<"list" | "calendar">>; searchTerm: string; setSearchTerm: Dispatch<SetStateAction<string>>; ... 18 more ...; handleSubmit: (e: FormEvent<...>) => void; }`.
+ * Estado e ações da aba **Tarefas**.
+ *
+ * Trabalha somente com TAREFAS (`CALL`, `MEETING`, `EMAIL`, `TASK`, `MESSAGE`).
+ * Notas e mudanças de estágio ficam na timeline do card do negócio.
  */
 export const useActivitiesController = () => {
   const searchParams = useSearchParams();
@@ -39,7 +48,7 @@ export const useActivitiesController = () => {
 
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<Activity['type'] | 'ALL'>('ALL');
+  const [filterType, setFilterType] = useState<TaskActivityType | 'ALL'>('ALL');
   const [dateFilter, setDateFilter] = useState<'ALL' | 'overdue' | 'today' | 'upcoming'>('ALL');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -61,7 +70,7 @@ export const useActivitiesController = () => {
 
   const [formData, setFormData] = useState({
     title: '',
-    type: 'CALL' as Activity['type'],
+    type: 'CALL' as TaskActivityType,
     date: new Date().toISOString().split('T')[0],
     time: '09:00',
     description: '',
@@ -84,11 +93,17 @@ export const useActivitiesController = () => {
     return { todayTs: today.getTime(), tomorrowTs: tomorrow.getTime() };
   }, []);
 
+  /**
+   * Esta aba mostra apenas TAREFAS. Notas e mudanças de estágio (`NOTE`,
+   * `STATUS_CHANGE`) são histórico e vivem na timeline do card do negócio —
+   * ver `lib/utils/activityKind.ts`.
+   */
   const filteredActivities = useMemo(() => {
     const { todayTs, tomorrowTs } = dateBoundaries;
     const q = searchTerm.toLowerCase();
 
-    return activities
+    const matching = activities
+      .filter(isTaskActivity)
       .map((activity) => ({ activity, ts: Date.parse(activity.date) }))
       .filter(({ activity, ts }) => {
         const matchesSearch = (activity.title || '').toLowerCase().includes(q);
@@ -106,10 +121,17 @@ export const useActivitiesController = () => {
 
         return matchesSearch && matchesType && matchesDateFilter;
       })
-      // Performance: sort by numeric timestamp (avoid `new Date(...)` in comparator).
-      .sort((a, b) => a.ts - b.ts)
       .map(({ activity }) => activity);
+
+    // Ordem de trabalho: atrasadas → hoje → próximas → concluídas.
+    return sortTasksByUrgency(matching);
   }, [activities, dateBoundaries, searchTerm, filterType, dateFilter]);
+
+  /** Mesmos itens de `filteredActivities`, já separados por prazo para a lista. */
+  const groupedActivities = useMemo(
+    () => groupTasksByDueDate(filteredActivities),
+    [filteredActivities]
+  );
 
   const handleNewActivity = () => {
     setEditingActivity(null);
@@ -129,7 +151,7 @@ export const useActivitiesController = () => {
     const date = new Date(activity.date);
     setFormData({
       title: activity.title,
-      type: activity.type,
+      type: toTaskType(activity.type),
       date: date.toISOString().split('T')[0],
       time: date.toTimeString().slice(0, 5),
       description: activity.description || '',
@@ -139,10 +161,10 @@ export const useActivitiesController = () => {
   };
 
   const handleDeleteActivity = (id: string) => {
-    if (window.confirm('Tem certeza que deseja excluir esta atividade?')) {
+    if (window.confirm('Tem certeza que deseja excluir esta tarefa?')) {
       deleteActivityMutation.mutate(id, {
         onSuccess: () => {
-          showToast('Atividade excluída com sucesso', 'success');
+          showToast('Tarefa excluída com sucesso', 'success');
         },
       });
     }
@@ -160,7 +182,7 @@ export const useActivitiesController = () => {
         },
         {
           onSuccess: () => {
-            showToast(activity.completed ? 'Atividade reaberta' : 'Atividade concluída', 'success');
+            showToast(activity.completed ? 'Tarefa reaberta' : 'Tarefa concluída', 'success');
           },
         }
       );
@@ -194,7 +216,7 @@ export const useActivitiesController = () => {
         },
         {
           onSuccess: () => {
-            showToast('Atividade atualizada com sucesso', 'success');
+            showToast('Tarefa atualizada com sucesso', 'success');
             setIsModalOpen(false);
           },
         }
@@ -218,11 +240,11 @@ export const useActivitiesController = () => {
         },
         {
           onSuccess: () => {
-            showToast('Atividade criada com sucesso', 'success');
+            showToast('Tarefa criada com sucesso', 'success');
             setIsModalOpen(false);
           },
           onError: (error: Error) => {
-            showToast(`Erro ao criar atividade: ${error.message}`, 'error');
+            showToast(`Erro ao criar tarefa: ${error.message}`, 'error');
           },
         }
       );
@@ -246,6 +268,7 @@ export const useActivitiesController = () => {
     formData,
     setFormData,
     filteredActivities,
+    groupedActivities,
     deals,
     contacts,
     companies,

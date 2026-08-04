@@ -11,8 +11,7 @@ import {
 } from '@/components/ui/FormField';
 import { activityFormSchema } from '@/lib/validations/schemas';
 import type { ActivityFormData } from '@/lib/validations/schemas';
-
-type FormActivityType = 'CALL' | 'MEETING' | 'EMAIL' | 'TASK';
+import { TASK_TYPE_OPTIONS, toTaskType } from '@/lib/utils/activityKind';
 
 interface ActivityFormModalV2Props {
   isOpen: boolean;
@@ -22,40 +21,13 @@ interface ActivityFormModalV2Props {
   deals: Deal[];
 }
 
-const activityTypeOptions = [
-  { value: 'CALL', label: 'Ligação' },
-  { value: 'MEETING', label: 'Reunião' },
-  { value: 'EMAIL', label: 'Email' },
-  { value: 'TASK', label: 'Tarefa' },
-];
+const activityTypeOptions = TASK_TYPE_OPTIONS.map(o => ({ ...o }));
 
-// Helper to get safe activity type for form
-const getSafeActivityType = (type?: Activity['type']): FormActivityType => {
-  const validTypes: FormActivityType[] = ['CALL', 'MEETING', 'EMAIL', 'TASK'];
-  if (type && validTypes.includes(type as FormActivityType)) {
-    return type as FormActivityType;
-  }
-  return 'CALL';
-};
+// Registros de histórico (NOTE/STATUS_CHANGE) não são editáveis por aqui:
+// caem em 'TASK' para o formulário nunca ficar com um tipo inválido.
+const getSafeActivityType = toTaskType;
 
-/**
- * Componente React `ActivityFormModalV2`.
- *
- * @param {ActivityFormModalV2Props} {
-  isOpen,
-  onClose,
-  onSubmit,
-  editingActivity,
-  deals,
-} - Parâmetro `{
-  isOpen,
-  onClose,
-  onSubmit,
-  editingActivity,
-  deals,
-}`.
- * @returns {Element} Retorna um valor do tipo `Element`.
- */
+/** Modal de TAREFA validado por Zod (`activityFormSchema`). */
 export const ActivityFormModalV2: React.FC<ActivityFormModalV2Props> = ({
   isOpen,
   onClose,
@@ -114,7 +86,7 @@ export const ActivityFormModalV2: React.FC<ActivityFormModalV2Props> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={editingActivity ? 'Editar Atividade' : 'Nova Atividade'}
+      title={editingActivity ? 'Editar Tarefa' : 'Nova Tarefa'}
     >
       <ModalForm onSubmit={handleSubmit(handleFormSubmit)}>
         <InputField
@@ -157,13 +129,13 @@ export const ActivityFormModalV2: React.FC<ActivityFormModalV2Props> = ({
 
         <TextareaField
           label="Descrição"
-          placeholder="Detalhes da atividade..."
+          placeholder="Detalhes da tarefa..."
           error={errors.description}
           registration={register('description')}
         />
 
         <SubmitButton isLoading={isSubmitting}>
-          {editingActivity ? 'Salvar Alterações' : 'Criar Atividade'}
+          {editingActivity ? 'Salvar Alterações' : 'Criar Tarefa'}
         </SubmitButton>
       </ModalForm>
     </Modal>

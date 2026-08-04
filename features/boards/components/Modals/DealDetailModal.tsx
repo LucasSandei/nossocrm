@@ -53,10 +53,13 @@ import {
   Plus,
   MessageSquare,
   FileText,
+  ListTodo,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { StageProgressBar } from '../StageProgressBar';
 import { ActivityRow } from '@/features/activities/components/ActivityRow';
+import { ContactTasksPanel } from '@/features/activities/components/ContactTasksPanel';
+import { isTimelineActivity } from '@/lib/utils/activityKind';
 import { formatPriorityPtBr } from '@/lib/utils/priority';
 import { formatCustomFieldValue } from '@/lib/utils/customFields';
 import { toWhatsAppPhone } from '@/lib/phone';
@@ -180,7 +183,7 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
   const [aiResult, setAiResult] = useState<{ suggestion: string; score: number } | null>(null);
   const [emailDraft, setEmailDraft] = useState<string | null>(null);
   const [newNote, setNewNote] = useState('');
-  const [activeTab, setActiveTab] = useState<'timeline' | 'products' | 'info'>('timeline');
+  const [activeTab, setActiveTab] = useState<'timeline' | 'tasks' | 'products' | 'info'>('timeline');
   const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [objection, setObjection] = useState('');
@@ -258,10 +261,15 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
     return stage?.label;
   }, [deal?.status, dealBoard]);
 
-  // Performance: filter deal activities once per deal change (avoid filtering inside render).
+  /**
+   * A timeline mostra apenas o HISTÓRICO do negócio (notas e mudanças de
+   * estágio). As tarefas a fazer têm aba própria — ver `activityKind.ts`.
+   *
+   * Performance: filtra uma vez por mudança de deal (não dentro do render).
+   */
   const dealActivities = useMemo(() => {
     if (!deal) return [] as Activity[];
-    return activities.filter((a) => a.dealId === deal.id);
+    return activities.filter((a) => a.dealId === deal.id && isTimelineActivity(a));
   }, [activities, deal]);
 
   if (!isOpen || !deal) return null;
@@ -938,6 +946,13 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                     Timeline
                   </button>
                   <button
+                    onClick={() => setActiveTab('tasks')}
+                    className={`text-sm font-bold h-14 border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'tasks' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
+                  >
+                    <ListTodo size={14} aria-hidden="true" />
+                    Tarefas
+                  </button>
+                  <button
                     onClick={() => setActiveTab('products')}
                     className={`text-sm font-bold h-14 border-b-2 transition-colors ${activeTab === 'products' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
                   >
@@ -978,7 +993,7 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                     <div className="space-y-3 pl-4 border-l border-slate-200 dark:border-slate-800">
                       {dealActivities.length === 0 && (
                         <p className="text-sm text-slate-500 italic pl-4">
-                          Nenhuma atividade registrada.
+                          Nenhuma atividade registrada. Tarefas a fazer ficam na aba Tarefas.
                         </p>
                       )}
                       {dealActivities.map(activity => (
@@ -996,6 +1011,18 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                         />
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {activeTab === 'tasks' && (
+                  <div className="animate-in fade-in slide-in-from-bottom-4">
+                    <ContactTasksPanel
+                      contactId={contact?.id}
+                      contactName={contact?.name || deal.contactName}
+                      dealId={deal.id}
+                      dealTitle={deal.title}
+                      clientCompanyId={deal.clientCompanyId}
+                    />
                   </div>
                 )}
 

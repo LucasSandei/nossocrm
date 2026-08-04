@@ -1,10 +1,11 @@
 import React from 'react';
 import { X } from 'lucide-react';
 import { Activity, Deal } from '@/types';
+import { TASK_TYPE_OPTIONS, type TaskActivityType } from '@/lib/utils/activityKind';
 
 interface ActivityFormData {
   title: string;
-  type: Activity['type'];
+  type: TaskActivityType;
   date: string;
   time: string;
   description: string;
@@ -21,28 +22,7 @@ interface ActivityFormModalProps {
   deals: Deal[];
 }
 
-/**
- * Componente React `ActivityFormModal`.
- *
- * @param {ActivityFormModalProps} {
-  isOpen,
-  onClose,
-  onSubmit,
-  formData,
-  setFormData,
-  editingActivity,
-  deals,
-} - Parâmetro `{
-  isOpen,
-  onClose,
-  onSubmit,
-  formData,
-  setFormData,
-  editingActivity,
-  deals,
-}`.
- * @returns {Element | null} Retorna um valor do tipo `Element | null`.
- */
+/** Modal de criação/edição de TAREFA da aba Tarefas. */
 export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
   isOpen,
   onClose,
@@ -78,7 +58,7 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
       >
         <div className="p-5 border-b border-slate-200 dark:border-white/10 flex justify-between items-center">
           <h2 className="text-lg font-bold text-slate-900 dark:text-white font-display">
-            {editingActivity ? 'Editar Atividade' : 'Nova Atividade'}
+            {editingActivity ? 'Editar Tarefa' : 'Nova Tarefa'}
           </h2>
           <button
             onClick={onClose}
@@ -107,13 +87,14 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
                 className="w-full bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500"
                 value={formData.type}
                 onChange={e =>
-                  setFormData({ ...formData, type: e.target.value as Activity['type'] })
+                  setFormData({ ...formData, type: e.target.value as TaskActivityType })
                 }
               >
-                <option value="CALL">Ligação</option>
-                <option value="MEETING">Reunião</option>
-                <option value="EMAIL">Email</option>
-                <option value="TASK">Tarefa</option>
+                {TASK_TYPE_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -165,7 +146,7 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
             </label>
             <textarea
               className="w-full bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-primary-500 min-h-[80px]"
-              placeholder="Detalhes da atividade..."
+              placeholder="Detalhes da tarefa..."
               value={formData.description}
               onChange={e => setFormData({ ...formData, description: e.target.value })}
             />
@@ -175,7 +156,7 @@ export const ActivityFormModal: React.FC<ActivityFormModalProps> = ({
             type="submit"
             className="w-full bg-primary-600 hover:bg-primary-500 text-white font-bold py-2.5 rounded-lg mt-2 shadow-lg shadow-primary-600/20 transition-all"
           >
-            {editingActivity ? 'Salvar Alterações' : 'Criar Atividade'}
+            {editingActivity ? 'Salvar Alterações' : 'Criar Tarefa'}
           </button>
         </form>
       </div>
