@@ -99,7 +99,8 @@ export const CRMCallOptionsSchema = z.object({
     // User context
     userId: z.string().optional(),
     userName: z.string().optional(),
-    userRole: z.enum(['admin', 'vendedor']).optional(),
+    // `suporte` tem as mesmas permissões do vendedor — a diferença está só em metas.
+    userRole: z.enum(['admin', 'vendedor', 'suporte']).optional(),
 });
 
 // Infer type from schema for type-safety

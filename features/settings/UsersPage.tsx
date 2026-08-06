@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { ConfirmDialog as ConfirmModal } from '@/components/ui/confirm-dialog';
-import { Loader2, UserPlus, Crown, Briefcase, KeyRound, Mail, Check, X, Sparkles, Clock, RefreshCw, Trash2, Link, Copy, CheckCircle2 } from 'lucide-react';
+import { Loader2, UserPlus, Crown, Briefcase, KeyRound, Mail, Check, X, Sparkles, Clock, RefreshCw, Trash2, Link, Copy, CheckCircle2, LifeBuoy } from 'lucide-react';
 
 interface Profile {
     id: string;
@@ -272,6 +272,7 @@ export const UsersPage: React.FC = () => {
 
     const admins = users.filter(u => u.role === 'admin');
     const vendedores = users.filter(u => u.role === 'vendedor');
+    const suportes = users.filter(u => u.role === 'suporte');
 
     return (
         <div className="max-w-4xl mx-auto pb-10">
@@ -283,7 +284,7 @@ export const UsersPage: React.FC = () => {
                             Sua Equipe
                         </h1>
                         <p className="text-slate-500 dark:text-slate-400 mt-2 text-lg">
-                            {users.length} {users.length === 1 ? 'membro' : 'membros'} • {admins.length} admin{admins.length !== 1 && 's'}, {vendedores.length} vendedor{vendedores.length !== 1 && 'es'}
+                            {users.length} {users.length === 1 ? 'membro' : 'membros'} • {admins.length} admin{admins.length !== 1 && 's'}, {vendedores.length} vendedor{vendedores.length !== 1 && 'es'}{suportes.length > 0 && `, ${suportes.length} suporte`}
                         </p>
                     </div>
                     <button
@@ -349,6 +350,11 @@ export const UsersPage: React.FC = () => {
                                                     <Crown className="h-3.5 w-3.5" />
                                                     Administrador
                                                 </>
+                                            ) : user.role === 'suporte' ? (
+                                                <>
+                                                    <LifeBuoy className="h-3.5 w-3.5" />
+                                                    Suporte
+                                                </>
                                             ) : (
                                                 <>
                                                     <Briefcase className="h-3.5 w-3.5" />
@@ -356,6 +362,11 @@ export const UsersPage: React.FC = () => {
                                                 </>
                                             )}
                                         </span>
+                                        {user.role === 'suporte' && (
+                                            <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400">
+                                                sem meta
+                                            </span>
+                                        )}
                                         <span className="text-slate-300 dark:text-slate-600">•</span>
                                         <span className="text-sm text-slate-400 dark:text-slate-500">
                                             {user.status === 'pending'
@@ -458,7 +469,9 @@ export const UsersPage: React.FC = () => {
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${invite.role === 'admin'
                                                             ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                                                            : 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                                                            : invite.role === 'suporte'
+                                                                ? 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+                                                                : 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
                                                             }`}>
                                                             {invite.role}
                                                         </span>
@@ -507,7 +520,7 @@ export const UsersPage: React.FC = () => {
                                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
                                         Cargo
                                     </label>
-                                    <div className="grid grid-cols-2 gap-3">
+                                    <div className="grid grid-cols-3 gap-3">
                                         <button
                                             type="button"
                                             onClick={() => setNewUserRole('vendedor')}
@@ -524,6 +537,25 @@ export const UsersPage: React.FC = () => {
                                             </div>
                                             {newUserRole === 'vendedor' && (
                                                 <div className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary-500" />
+                                            )}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setNewUserRole('suporte')}
+                                            className={`relative p-3 rounded-xl border-2 text-left transition-all ${newUserRole === 'suporte'
+                                                ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
+                                                : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                                                }`}
+                                            title="Mesmo acesso do vendedor, mas sem meta de vendas"
+                                        >
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <LifeBuoy className={`h-4 w-4 ${newUserRole === 'suporte' ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'}`} />
+                                                <span className={`font-medium text-sm ${newUserRole === 'suporte' ? 'text-sky-900 dark:text-sky-100' : 'text-slate-700 dark:text-slate-300'}`}>
+                                                    Suporte
+                                                </span>
+                                            </div>
+                                            {newUserRole === 'suporte' && (
+                                                <div className="absolute top-2 right-2 h-2 w-2 rounded-full bg-sky-500" />
                                             )}
                                         </button>
                                         <button

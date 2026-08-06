@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   BarChart3,
   Settings,
+  Target,
   User,
 } from 'lucide-react';
 
@@ -31,19 +32,31 @@ export const PRIMARY_NAV: PrimaryNavItem[] = [
   { id: 'more', label: 'Mais', icon: MoreHorizontal },
 ];
 
-export type SecondaryNavId = 'dashboard' | 'reports' | 'settings' | 'profile';
+export type SecondaryNavId = 'dashboard' | 'reports' | 'goals' | 'settings' | 'profile';
 
 export interface SecondaryNavItem {
   id: SecondaryNavId;
   label: string;
   href: string;
   icon: ComponentType<{ className?: string }>;
+  /** Só aparece para `role === 'admin'`. Filtrado por `visibleSecondaryNav`. */
+  adminOnly?: boolean;
 }
 
 /** Mirrors non-primary destinations available in the desktop sidebar/user menu. */
 export const SECONDARY_NAV: SecondaryNavItem[] = [
   { id: 'dashboard', label: 'Visão Geral', href: '/dashboard', icon: LayoutDashboard },
   { id: 'reports', label: 'Relatórios', href: '/reports', icon: BarChart3 },
+  { id: 'goals', label: 'Metas', href: '/metas', icon: Target, adminOnly: true },
   { id: 'settings', label: 'Configurações', href: '/settings', icon: Settings },
   { id: 'profile', label: 'Perfil', href: '/profile', icon: User },
 ];
+
+/**
+ * Itens que o papel do usuário pode ver.
+ *
+ * Esconder do menu é conveniência; quem garante o acesso é a RLS no banco.
+ */
+export function visibleSecondaryNav(role: string | undefined): SecondaryNavItem[] {
+  return SECONDARY_NAV.filter((item) => !item.adminOnly || role === 'admin');
+}

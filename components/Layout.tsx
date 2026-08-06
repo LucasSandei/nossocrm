@@ -43,6 +43,7 @@ import {
   User,
   Bug,
   CheckSquare,
+  Target,
   PanelLeftClose,
   PanelLeftOpen
 } from 'lucide-react';
@@ -55,6 +56,7 @@ import { SkipLink } from '@/lib/a11y';
 import { useResponsiveMode } from '@/hooks/useResponsiveMode';
 import { BottomNav, MoreMenuSheet, NavigationRail } from '@/components/navigation';
 import { useUnreadCount } from '@/lib/query/hooks/useConversationsQuery';
+import { useGoalProgress } from '@/lib/query/hooks/useGoalsQuery';
 
 // Lazy load AI Assistant (deprecated - using UIChat now)
 // const AIAssistant = lazy(() => import('./AIAssistant'));
@@ -78,6 +80,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/activities': 'Tarefas',
   '/decisions': 'Decisões',
   '/reports': 'Relatórios',
+  '/metas': 'Gestão de Metas',
   '/settings': 'Configurações',
   '/profile': 'Perfil',
   '/ai': 'Assistente IA',
@@ -186,6 +189,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   // Messaging unread count for notification badge
   const { data: unreadMessagesCount = 0 } = useUnreadCount();
+
+  // Vendas aguardando aprovação — badge do item "Metas" (só o admin aprova)
+  const isAdmin = profile?.role === 'admin';
+  const { data: goalProgress } = useGoalProgress();
+  const pendingApprovals = isAdmin ? (goalProgress?.pendingCount ?? 0) : 0;
 
   useEffect(() => {
     setDebugEnabled(isDebugMode());
@@ -307,6 +315,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             { to: '/contacts', icon: Users, label: 'Contatos', prefetch: 'contacts' as const, badge: undefined },
             { to: '/activities', icon: CheckSquare, label: 'Tarefas', prefetch: 'activities' as const, badge: undefined },
             { to: '/reports', icon: BarChart3, label: 'Relatórios', prefetch: 'reports' as const, badge: undefined },
+            // Gestão de Metas é admin-only (a RLS confirma no banco).
+            ...(isAdmin
+              ? [{ to: '/metas', icon: Target, label: 'Metas', prefetch: undefined, badge: pendingApprovals }]
+              : []),
             { to: '/settings', icon: Settings, label: 'Configurações', prefetch: 'settings' as const, badge: undefined },
           ].map((item) => {
             if (sidebarCollapsed) {

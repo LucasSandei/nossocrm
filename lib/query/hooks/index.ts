@@ -282,3 +282,28 @@ export {
   type FormResponse,
   type FormResponsesResult,
 } from './useFormResponsesQuery';
+
+// Gestão de Metas — metas, comissões, bônus e aprovação de Ganhos
+export {
+  useGoalProgress,
+  useSalesGoals,
+  useSaveSalesGoal,
+  useDeleteSalesGoal,
+  useCopyGoals,
+  useCommissionTiers,
+  useCreateCommissionTier,
+  useUpdateCommissionTier,
+  useDeleteCommissionTier,
+  useProductCommissions,
+  useSaveProductCommission,
+  useDeleteProductCommission,
+  useRevenueBonuses,
+  useCreateRevenueBonus,
+  useUpdateRevenueBonus,
+  useDeleteRevenueBonus,
+  useSaleApprovals,
+  useDealApproval,
+  useReviewSaleApproval,
+  useApproveManySales,
+  useApprovedSales,
+} from './useGoalsQuery';

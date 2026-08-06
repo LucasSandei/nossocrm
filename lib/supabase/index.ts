@@ -7,3 +7,4 @@ export { productsService } from './products';
 export { settingsService, lifecycleStagesService } from './settings';
 export { tagsService, contactTagsService } from './tags';
 export { customFieldDefinitionsService } from './customFields';
+export { goalsService, toMonthKey, monthRange } from './goals';
