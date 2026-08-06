@@ -51,6 +51,9 @@ vi.mock('@/lib/query/hooks', () => ({
   }),
   useUpdateContact: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useTags: () => ({ data: [{ id: 'tag-1', name: 'Base antiga' }], isLoading: false }),
+  // A aba Formulários não é a inicial, mas o painel importa daqui: sem o mock,
+  // abrir essa aba num teste falharia com "não é uma função".
+  useContactFormResponses: () => ({ data: undefined, isLoading: false, refetch: vi.fn() }),
   // DealDetailModal reads DEALS_VIEW_KEY via useDealsView (the real queryFn,
   // shared with the Kanban) instead of a dummy useQuery — see the comment in
   // DealDetailModal.tsx explaining why a dummy queryFn caused a cache bug.

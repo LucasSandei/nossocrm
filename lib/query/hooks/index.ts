@@ -274,3 +274,11 @@ export {
 } from './useOrgSettingsQuery';
 
 // =============================================================================
+
+// LS Forms — respostas de formulário do contato, lidas ao vivo
+export {
+  useContactFormResponses,
+  type FormAnswer,
+  type FormResponse,
+  type FormResponsesResult,
+} from './useFormResponsesQuery';

@@ -1,6 +1,7 @@
-import React, { useId, useState } from 'react';
-import { X, Plus } from 'lucide-react';
+import React, { useEffect, useId, useState } from 'react';
+import { X, Plus, ClipboardList, User } from 'lucide-react';
 import { Contact } from '@/types';
+import { ContactFormsPanel } from '@/features/forms/components/ContactFormsPanel';
 import { DebugFillButton } from '@/components/debug/DebugFillButton';
 import { fakeContact } from '@/lib/debug';
 import { FocusTrap, useFocusReturn } from '@/lib/a11y';
@@ -68,9 +69,21 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
   useFocusReturn({ enabled: isOpen });
   const [isCreatingBatch, setIsCreatingBatch] = useState(false);
   const [tagInput, setTagInput] = useState('');
+  const [activeTab, setActiveTab] = useState<'data' | 'forms'>('data');
 
   const { data: availableTags = [] } = useTags();
   const { data: customFieldDefinitions = [] } = useContactCustomFieldDefinitions();
+
+  /**
+   * Formulários só existem para contato já gravado — um contato novo ainda
+   * não tem id para procurar no LS Forms.
+   */
+  const canShowForms = Boolean(editingContact?.id);
+
+  // Abrir o modal sempre começa nos dados, inclusive ao trocar de contato.
+  useEffect(() => {
+    if (isOpen) setActiveTab('data');
+  }, [isOpen, editingContact?.id]);
 
   if (!isOpen) return null;
 
@@ -150,7 +163,44 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
             </button>
           </div>
 
-          <form onSubmit={onSubmit} className="flex flex-col flex-1 min-h-0">
+          {canShowForms && (
+            <div className="px-5 border-b border-slate-200 dark:border-white/10 flex gap-5 flex-shrink-0">
+              {([
+                { id: 'data' as const, label: 'Dados', icon: User },
+                { id: 'forms' as const, label: 'Formulários', icon: ClipboardList },
+              ]).map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActiveTab(id)}
+                  aria-current={activeTab === id ? 'page' : undefined}
+                  className={`h-11 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${
+                    activeTab === id
+                      ? 'border-primary-500 text-primary-600 dark:text-white'
+                      : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'
+                  }`}
+                >
+                  <Icon size={14} aria-hidden="true" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {activeTab === 'forms' && canShowForms && (
+            <div className="p-5 overflow-y-auto flex-1 min-h-0">
+              <ContactFormsPanel
+                contactId={editingContact!.id}
+                contactName={editingContact!.name}
+                enabled={activeTab === 'forms'}
+              />
+            </div>
+          )}
+
+          <form
+            onSubmit={onSubmit}
+            className={`flex-col flex-1 min-h-0 ${activeTab === 'data' ? 'flex' : 'hidden'}`}
+          >
             <div className="p-5 space-y-4 overflow-y-auto">
               <div>
                 <label htmlFor="contact-name" className={LABEL_CLASS}>

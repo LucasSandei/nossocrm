@@ -38,6 +38,13 @@ export const queryKeys = {
         byDeal: (dealId: string) => [...base.all, 'deal', dealId] as const,
     })),
 
+    // LS Forms — respostas lidas ao vivo, por contato
+    formResponses: {
+        all: ['formResponses'] as const,
+        byContact: (contactId: string) => ['formResponses', 'contact', contactId] as const,
+        settings: ['formResponses', 'settings'] as const,
+    },
+
     // Dashboard (non-standard structure)
     dashboard: {
         stats: ['dashboard', 'stats'] as const,

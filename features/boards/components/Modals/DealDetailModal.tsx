@@ -54,11 +54,13 @@ import {
   MessageSquare,
   FileText,
   ListTodo,
+  ClipboardList,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { StageProgressBar } from '../StageProgressBar';
 import { ActivityRow } from '@/features/activities/components/ActivityRow';
 import { ContactTasksPanel } from '@/features/activities/components/ContactTasksPanel';
+import { ContactFormsPanel } from '@/features/forms/components/ContactFormsPanel';
 import { isTimelineActivity } from '@/lib/utils/activityKind';
 import { formatPriorityPtBr } from '@/lib/utils/priority';
 import { formatCustomFieldValue } from '@/lib/utils/customFields';
@@ -183,7 +185,9 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
   const [aiResult, setAiResult] = useState<{ suggestion: string; score: number } | null>(null);
   const [emailDraft, setEmailDraft] = useState<string | null>(null);
   const [newNote, setNewNote] = useState('');
-  const [activeTab, setActiveTab] = useState<'timeline' | 'tasks' | 'products' | 'info'>('timeline');
+  const [activeTab, setActiveTab] = useState<
+    'timeline' | 'tasks' | 'forms' | 'products' | 'info'
+  >('timeline');
   const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const [objection, setObjection] = useState('');
@@ -953,6 +957,13 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                     Tarefas
                   </button>
                   <button
+                    onClick={() => setActiveTab('forms')}
+                    className={`text-sm font-bold h-14 border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'forms' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
+                  >
+                    <ClipboardList size={14} aria-hidden="true" />
+                    Formulários
+                  </button>
+                  <button
                     onClick={() => setActiveTab('products')}
                     className={`text-sm font-bold h-14 border-b-2 transition-colors ${activeTab === 'products' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
                   >
@@ -1022,6 +1033,20 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                       dealId={deal.id}
                       dealTitle={deal.title}
                       clientCompanyId={deal.clientCompanyId}
+                    />
+                  </div>
+                )}
+
+                {activeTab === 'forms' && (
+                  <div className="animate-in fade-in slide-in-from-bottom-4">
+                    {/*
+                      `enabled` amarra a chamada à aba: abrir um card não pode
+                      custar uma ida ao LS Forms que ninguém pediu.
+                    */}
+                    <ContactFormsPanel
+                      contactId={contact?.id}
+                      contactName={contact?.name || deal.contactName}
+                      enabled={activeTab === 'forms'}
                     />
                   </div>
                 )}
