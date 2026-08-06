@@ -2,9 +2,10 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { PRIMARY_NAV, SECONDARY_NAV } from './navConfig';
+import { PRIMARY_NAV, visibleSecondaryNav } from './navConfig';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { usePrefetchRoute } from '@/lib/query/hooks';
+import { useAuth } from '@/context/AuthContext';
 
 export interface NavigationRailProps {
   /** Optional: used only if we want to keep "More" as a sheet trigger (mobile-like). */
@@ -14,6 +15,8 @@ export interface NavigationRailProps {
 export function NavigationRail({ onOpenMore }: NavigationRailProps) {
   const pathname = usePathname();
   const prefetch = usePrefetchRoute();
+  const { profile } = useAuth();
+  const secondaryNav = visibleSecondaryNav(profile?.role);
 
   const isHrefActive = (href: string) =>
     pathname === href ||
@@ -71,7 +74,7 @@ export function NavigationRail({ onOpenMore }: NavigationRailProps) {
         <div className="my-3 h-px bg-slate-200/60 dark:bg-white/10" />
 
         <div className="space-y-2">
-          {SECONDARY_NAV.map((item) => {
+          {secondaryNav.map((item) => {
             const Icon = item.icon;
             const isActive = isHrefActive(item.href);
             return (

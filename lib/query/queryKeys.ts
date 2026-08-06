@@ -243,6 +243,30 @@ export const queryKeys = {
      * Custom field definitions scoped to contacts (entity_type = 'contact').
      */
     contactCustomFieldDefinitions: createQueryKeys('contactCustomFieldDefinitions'),
+
+    /**
+     * Gestão de Metas: metas mensais, remuneração e fila de aprovação.
+     * Quase tudo é por mês (`monthKey` = 'YYYY-MM-01').
+     */
+    goals: {
+        all: ['goals'] as const,
+        /** Progresso do mês (RPC) — o card da Visão Geral. */
+        progress: (monthKey: string) => ['goals', 'progress', monthKey] as const,
+        /** Metas cadastradas de um mês. */
+        list: (monthKey: string) => ['goals', 'list', monthKey] as const,
+        /** Faixas de comissão (não variam por mês). */
+        tiers: () => ['goals', 'tiers'] as const,
+        /** Comissões específicas por produto. */
+        productCommissions: () => ['goals', 'productCommissions'] as const,
+        /** Bônus por faturamento. */
+        bonuses: () => ['goals', 'bonuses'] as const,
+        /** Fila de aprovação de Ganhos. */
+        approvals: (filters: Record<string, unknown>) => ['goals', 'approvals', filters] as const,
+        /** Status de aprovação de um negócio específico. */
+        approvalByDeal: (dealId: string) => ['goals', 'approvals', 'deal', dealId] as const,
+        /** Vendas aprovadas do mês, base do cálculo de comissão. */
+        approvedSales: (monthKey: string) => ['goals', 'approvedSales', monthKey] as const,
+    },
 };
 
 /**

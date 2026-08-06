@@ -9,7 +9,7 @@ import { createClient } from '@/lib/supabase/server';
 
 const CreateInviteSchema = z
   .object({
-    role: z.enum(['admin', 'vendedor']).default('vendedor'),
+    role: z.enum(['admin', 'vendedor', 'suporte']).default('vendedor'),
     expiresAt: z.union([z.string().datetime(), z.null()]).optional(),
     email: z.string().email().optional(),
   })
@@ -23,7 +23,7 @@ type ActionResult<T = void> =
   | { ok: true; data: T }
   | { ok: false; error: string; status?: number };
 
-type Role = 'admin' | 'vendedor';
+type Role = 'admin' | 'vendedor' | 'suporte';
 
 interface Invite {
   id: string;

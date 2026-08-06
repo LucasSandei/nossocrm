@@ -22,7 +22,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { ConfirmDialog as ConfirmModal } from '@/components/ui/confirm-dialog';
 import { LossReasonModal } from '@/components/ui/LossReasonModal';
-import { useMoveDealSimple } from '@/lib/query/hooks';
+import { useMoveDealSimple, useDealApproval } from '@/lib/query/hooks';
 import { FocusTrap, useFocusReturn } from '@/lib/a11y';
 import { Activity } from '@/types';
 import { useResponsiveMode } from '@/hooks/useResponsiveMode';
@@ -144,6 +144,10 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
   const activitiesById = useMemo(() => new Map(activities.map((a) => [a.id, a])), [activities]);
 
   const deal = dealId ? dealsById.get(dealId) : undefined;
+
+  // Um Ganho não conta na meta até o Admin aprovar — o selo evita que o
+  // vendedor comemore um número que ainda não entrou.
+  const { data: dealApproval } = useDealApproval(deal?.id, Boolean(deal?.isWon));
 
   /**
    * Dados do contato exibidos no card.
@@ -550,6 +554,30 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                     <span className={`text-xs font-bold px-3 py-1.5 rounded-lg ${deal.isWon ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
                       {deal.isWon ? '✓ GANHO' : '✗ PERDIDO'}
                     </span>
+                    {deal.isWon && dealApproval && (
+                      <span
+                        className={`text-xs font-bold px-3 py-1.5 rounded-lg ${
+                          dealApproval.status === 'approved'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                            : dealApproval.status === 'rejected'
+                              ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+                              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                        }`}
+                        title={
+                          dealApproval.status === 'pending'
+                            ? 'Aguardando aprovação do administrador para contar na meta'
+                            : dealApproval.status === 'approved'
+                              ? 'Aprovado — já conta na meta e nas comissões'
+                              : 'Rejeitado — não conta na meta'
+                        }
+                      >
+                        {dealApproval.status === 'approved'
+                          ? 'NA META'
+                          : dealApproval.status === 'rejected'
+                            ? 'NÃO CONTABILIZADO'
+                            : 'AGUARDANDO APROVAÇÃO'}
+                      </span>
+                    )}
                     <button
                       onClick={() => {
                         // Find first non-won/lost stage to reopen to

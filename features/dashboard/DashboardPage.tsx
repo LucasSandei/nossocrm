@@ -13,6 +13,7 @@ import { ActivityFeedItem } from './components/ActivityFeedItem';
 import { PipelineAlertsModal } from './components/PipelineAlertsModal';
 import { AIMetricsSection } from './components/AIMetricsSection';
 import { MessagingMetricsSection } from './components/MessagingMetricsSection';
+import { GoalHighlight } from './components/GoalHighlight';
 import { useDashboardMetrics, PeriodFilter, COMPARISON_LABELS } from './hooks/useDashboardMetrics';
 import { PeriodFilterSelect } from '@/components/filters/PeriodFilterSelect';
 import { LazyFunnelChart, ChartWrapper } from '@/components/charts';
@@ -146,6 +147,9 @@ const DashboardPage: React.FC = () => {
           {/* Button removed */}
         </div>
       </div>
+
+      {/* Metas — destaque principal: o quanto falta para bater, em % e em R$ */}
+      <GoalHighlight />
 
       {/* KPI Grid */}
       {isLoading ? (
