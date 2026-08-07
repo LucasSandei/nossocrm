@@ -15,6 +15,9 @@ import { supabase } from '@/lib/supabase';
 export interface OrgMember {
   id: string;
   name: string;
+  email?: string;
+  /** 'admin' | 'vendedor' | 'suporte'. Admins ignoram restrição de pipeline. */
+  role?: string;
 }
 
 export function useOrgMembersQuery() {
@@ -26,14 +29,16 @@ export function useOrgMembersQuery() {
     queryFn: async (): Promise<OrgMember[]> => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, name')
+        .select('id, name, email, role')
         .eq('organization_id', orgId!)
         .order('name');
 
       if (error) throw error;
       return (data ?? []).map((p) => ({
         id: p.id,
-        name: p.name ?? 'Sem nome',
+        name: p.name ?? p.email ?? 'Sem nome',
+        email: p.email ?? undefined,
+        role: p.role ?? undefined,
       }));
     },
     enabled: !!orgId,

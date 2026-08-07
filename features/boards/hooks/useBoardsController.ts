@@ -709,6 +709,8 @@ export const useBoardsController = () => {
             wonStageId: boardData.wonStageId,
             lostStageId: boardData.lostStageId,
             stages: boardData.stages,
+            visibility: boardData.visibility,
+            memberIds: boardData.memberIds,
           },
         },
         {

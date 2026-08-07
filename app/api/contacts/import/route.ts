@@ -155,12 +155,21 @@ export async function POST(req: Request) {
 
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('organization_id')
+      .select('organization_id, role')
       .eq('id', user.id)
       .single();
 
     if (profileError || !profile?.organization_id) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+    }
+
+    // Mesma porta do export (botão único "Importar/Exportar"): carga em massa
+    // na base de contatos é operação de admin.
+    if (profile.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Somente administradores podem importar contatos.' },
+        { status: 403 }
+      );
     }
 
     const orgId = profile.organization_id;

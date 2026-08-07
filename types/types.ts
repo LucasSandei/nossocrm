@@ -359,6 +359,9 @@ export interface AgentPersona {
 }
 
 // Board = Kanban configurável (ex: Pipeline de Vendas, Onboarding, etc)
+/** Modo de visibilidade de um pipeline. Ver `boards.visibility` no banco. */
+export type BoardVisibility = 'org' | 'restricted';
+
 export interface Board {
   id: string;
   organizationId?: OrganizationId; // Tenant FK (for RLS) - optional for templates
@@ -380,6 +383,17 @@ export interface Board {
   defaultProductId?: string;
   stages: BoardStage[];
   isDefault?: boolean;
+  /**
+   * Quem enxerga este pipeline.
+   * 'org' (padrão) = toda a organização. 'restricted' = apenas admins,
+   * o dono e os usuários listados em `memberIds`.
+   */
+  visibility?: BoardVisibility;
+  /**
+   * IDs dos usuários com acesso quando `visibility === 'restricted'`.
+   * Ignorado quando o board é 'org'.
+   */
+  memberIds?: string[];
   template?: 'PRE_SALES' | 'SALES' | 'ONBOARDING' | 'CS' | 'CUSTOM'; // Template usado para criar este board
   automationSuggestions?: string[]; // Sugestões de automação da IA
 

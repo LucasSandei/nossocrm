@@ -166,8 +166,16 @@ export const useUpdateBoard = () => {
         queryClient.setQueryData(queryKeys.boards.lists(), context.previousBoards);
       }
     },
-    onSettled: () => {
+    onSettled: (_data, _error, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.boards.all });
+
+      // Mudar a visibilidade muda quais deals a RLS devolve para o usuário.
+      // Só invalida quando isso realmente aconteceu — deals é um cache caro.
+      const touchedAccess =
+        variables.updates.visibility !== undefined || variables.updates.memberIds !== undefined;
+      if (touchedAccess) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.deals.all });
+      }
     },
   });
 };

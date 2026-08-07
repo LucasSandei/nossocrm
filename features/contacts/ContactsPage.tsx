@@ -4,6 +4,7 @@ import React from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { Trash2, X, LayoutGrid } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 import { useContactsController } from './hooks/useContactsController';
 import { ContactsHeader } from './components/ContactsHeader';
 import { ContactsFilters } from './components/ContactsFilters';
@@ -46,6 +47,10 @@ const MergeContactsModal = dynamic(
 export const ContactsPage: React.FC = () => {
     const controller = useContactsController();
     const router = useRouter();
+    const { profile } = useAuth();
+    // Import/export mexe na base inteira de contatos — restrito a admin.
+    // A rota /api/contacts/export também barra não-admin (403).
+    const isAdmin = profile?.role === 'admin';
     const [isImportExportOpen, setIsImportExportOpen] = React.useState(false);
     const [isMergeModalOpen, setIsMergeModalOpen] = React.useState(false);
 
@@ -76,7 +81,7 @@ export const ContactsPage: React.FC = () => {
                 isFilterOpen={controller.isFilterOpen}
                 setIsFilterOpen={controller.setIsFilterOpen}
                 openCreateModal={controller.openCreateModal}
-                openImportExportModal={() => setIsImportExportOpen(true)}
+                openImportExportModal={isAdmin ? () => setIsImportExportOpen(true) : undefined}
             />
 
             <ContactsImportExportModal
