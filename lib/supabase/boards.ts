@@ -14,7 +14,7 @@
  */
 
 import { supabase } from './client';
-import { Board, BoardStage, BoardGoal, AgentPersona, OrganizationId } from '@/types';
+import { Board, BoardStage, BoardGoal, AgentPersona, BoardVisibility, OrganizationId } from '@/types';
 import { sanitizeUUID, requireUUID } from './utils';
 import { slugify } from '@/lib/utils/slugify';
 
@@ -27,6 +27,17 @@ function isMissingColumnInSchemaCache(error: unknown, table: string, column: str
     message.includes(`'${table}'`) &&
     message.includes('schema cache')
   );
+}
+
+/**
+ * PostgREST retorna PGRST205 quando a tabela não existe no schema cache.
+ * Usado para degradar sem quebrar enquanto a migration de visibilidade
+ * (`board_members`) ainda não foi aplicada no ambiente.
+ */
+function isMissingTableInSchemaCache(error: unknown, table: string): boolean {
+  const code = String((error as any)?.code ?? '');
+  const message = String((error as any)?.message ?? '');
+  return code === 'PGRST205' || (message.includes(`'${table}'`) && message.includes('schema cache'));
 }
 
 // =============================================================================
@@ -55,6 +66,12 @@ async function getCurrentOrganizationId(): Promise<string | null> {
   cachedOrgUserId = user.id;
   cachedOrgId = orgId;
   return orgId;
+}
+
+async function getCurrentUserId(): Promise<string | null> {
+  if (!supabase) return null;
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id ?? null;
 }
 
 // ============================================
@@ -115,12 +132,28 @@ export interface DbBoard {
   automation_suggestions: string[] | null;
   /** Posição na lista de boards. */
   position: number;
+  /** Quem enxerga o pipeline: 'org' (todos) ou 'restricted' (allowlist). */
+  visibility?: BoardVisibility | null;
   /** Data de criação. */
   created_at: string;
   /** Data de atualização. */
   updated_at: string;
   /** ID do dono/responsável. */
   owner_id: string | null;
+}
+
+/**
+ * Vínculo usuário ↔ board para pipelines restritos.
+ *
+ * @interface DbBoardMember
+ */
+export interface DbBoardMember {
+  /** ID do board. */
+  board_id: string;
+  /** ID do usuário (profiles.id). */
+  user_id: string;
+  /** ID da organização/tenant. */
+  organization_id: string;
 }
 
 /**
@@ -168,12 +201,13 @@ const transformStage = (db: DbBoardStage): BoardStage => ({
 
 /**
  * Transforma board do formato DB para o formato da aplicação.
- * 
+ *
  * @param db - Board no formato do banco.
  * @param stages - Estágios no formato do banco.
+ * @param members - Vínculos de acesso (todos os boards; filtrados aqui).
  * @returns Board no formato da aplicação.
  */
-const transformBoard = (db: DbBoard, stages: DbBoardStage[]): Board => {
+const transformBoard = (db: DbBoard, stages: DbBoardStage[], members: DbBoardMember[] = []): Board => {
   const goal: BoardGoal | undefined = db.goal_description ? {
     description: db.goal_description,
     kpi: db.goal_kpi || '',
@@ -202,6 +236,9 @@ const transformBoard = (db: DbBoard, stages: DbBoardStage[]): Board => {
     wonStayInStage: db.won_stay_in_stage || false,
     lostStayInStage: db.lost_stay_in_stage || false,
     defaultProductId: (db as any).default_product_id || undefined,
+    // Coluna pode não existir ainda (migration não aplicada) — default aberto.
+    visibility: (db.visibility as BoardVisibility) || 'org',
+    memberIds: members.filter(m => m.board_id === db.id).map(m => m.user_id),
     goal,
     agentPersona,
     entryTrigger: db.entry_trigger || undefined,
@@ -262,6 +299,7 @@ const transformToDb = (board: Omit<Board, 'id' | 'createdAt'>, order?: number): 
     entry_trigger: board.entryTrigger || null,
     automation_suggestions: board.automationSuggestions || null,
     position: order ?? 0,
+    visibility: board.visibility === 'restricted' ? 'restricted' : 'org',
   };
 
   if (defaultProductId) {
@@ -300,8 +338,95 @@ const transformStageToDb = (
 });
 
 /**
+ * Lê os vínculos de acesso da organização.
+ *
+ * Degrada para lista vazia se a tabela ainda não existe (migration de
+ * visibilidade não aplicada) — o board então se comporta como 'org'.
+ *
+ * @returns Vínculos visíveis para o usuário atual.
+ */
+async function fetchBoardMembers(): Promise<DbBoardMember[]> {
+  if (!supabase) return [];
+
+  const { data, error } = await supabase
+    .from('board_members')
+    .select('board_id, user_id, organization_id');
+
+  if (error) {
+    if (!isMissingTableInSchemaCache(error, 'board_members')) {
+      console.warn('[boards] Não foi possível ler board_members:', error.message);
+    }
+    return [];
+  }
+
+  return (data || []) as DbBoardMember[];
+}
+
+/**
+ * Aplica a allowlist de um board restrito: insere os que faltam e remove
+ * os que saíram. Só admins passam pela RLS de `board_members`.
+ *
+ * Quando `visibility` é 'org' a lista é apagada — a coluna já libera todo
+ * mundo e manter linhas órfãs confundiria a próxima edição.
+ *
+ * @param boardId - Board alvo.
+ * @param organizationId - Tenant do board.
+ * @param visibility - Modo de visibilidade final do board.
+ * @param memberIds - IDs que devem ter acesso (ignorado se 'org').
+ */
+async function syncBoardMembers(
+  boardId: string,
+  organizationId: string,
+  visibility: BoardVisibility,
+  memberIds: string[] | undefined
+): Promise<{ error: Error | null }> {
+  if (!supabase) return { error: new Error('Supabase não configurado') };
+
+  const desired = visibility === 'restricted'
+    ? Array.from(new Set((memberIds || []).map(sanitizeUUID).filter((id): id is string => !!id)))
+    : [];
+
+  const { data: current, error: readError } = await supabase
+    .from('board_members')
+    .select('user_id')
+    .eq('board_id', boardId);
+
+  if (readError) {
+    // Sem a tabela não há o que sincronizar; o board continua funcionando como 'org'.
+    if (isMissingTableInSchemaCache(readError, 'board_members')) return { error: null };
+    return { error: readError };
+  }
+
+  const currentIds = new Set((current || []).map((r: any) => r.user_id as string));
+  const toAdd = desired.filter(id => !currentIds.has(id));
+  const toRemove = [...currentIds].filter(id => !desired.includes(id));
+
+  if (toAdd.length > 0) {
+    const { error } = await supabase.from('board_members').insert(
+      toAdd.map(userId => ({
+        board_id: boardId,
+        user_id: userId,
+        organization_id: organizationId,
+      }))
+    );
+    if (error) return { error };
+  }
+
+  if (toRemove.length > 0) {
+    const { error } = await supabase
+      .from('board_members')
+      .delete()
+      .eq('board_id', boardId)
+      .in('user_id', toRemove);
+    if (error) return { error };
+  }
+
+  return { error: null };
+}
+
+/**
  * Serviço de boards do Supabase.
- * 
+ *
  * Fornece operações CRUD para as tabelas `boards` e `board_stages`.
  * 
  * @example
@@ -326,16 +451,17 @@ export const boardsService = {
     try {
       if (!supabase) return { data: null, error: new Error('Supabase não configurado') };
 
-      const [boardsResult, stagesResult] = await Promise.all([
+      const [boardsResult, stagesResult, members] = await Promise.all([
         supabase.from('boards').select('*').order('position', { ascending: true }).order('created_at', { ascending: true }),
         supabase.from('board_stages').select('*').order('order', { ascending: true }),
+        fetchBoardMembers(),
       ]);
 
       if (boardsResult.error) return { data: null, error: boardsResult.error };
       if (stagesResult.error) return { data: null, error: stagesResult.error };
 
       const boards = (boardsResult.data || []).map(b =>
-        transformBoard(b as DbBoard, stagesResult.data as DbBoardStage[])
+        transformBoard(b as DbBoard, stagesResult.data as DbBoardStage[], members)
       );
 
       return { data: boards, error: null };
@@ -360,13 +486,16 @@ export const boardsService = {
 
       if (boardError || !boardData) return null;
 
-      const { data: stagesData } = await supabase
-        .from('board_stages')
-        .select('*')
-        .eq('board_id', id)
-        .order('order');
+      const [{ data: stagesData }, members] = await Promise.all([
+        supabase
+          .from('board_stages')
+          .select('*')
+          .eq('board_id', id)
+          .order('order'),
+        fetchBoardMembers(),
+      ]);
 
-      return transformBoard(boardData as DbBoard, (stagesData || []) as DbBoardStage[]);
+      return transformBoard(boardData as DbBoard, (stagesData || []) as DbBoardStage[], members);
     } catch (e) {
       console.error('Error fetching board:', e);
       return null;
@@ -404,10 +533,14 @@ export const boardsService = {
       }
 
       // 1. Create board
+      const creatorId = await getCurrentUserId();
       const baseKey = normalizeBoardKey((board as any).key) || normalizeBoardKey(board.name);
       const boardDataBase: any = {
         ...transformToDb(board, boardOrder),
         organization_id: organizationId,
+        // Dono do board: garante que quem criou nunca se tranca fora de um
+        // pipeline restrito (a RLS libera owner_id além da allowlist).
+        ...(creatorId ? { owner_id: creatorId } : {}),
         // For won/lost stages, we can't save them yet because stages don't exist
         won_stage_id: null,
         lost_stage_id: null,
@@ -443,6 +576,13 @@ export const boardsService = {
         if (insert.error && isMissingColumnInSchemaCache(insert.error, 'boards', 'key')) {
           const retryData = { ...(boardData as any) };
           delete retryData.key;
+          insert = await supabase.from('boards').insert(retryData).select().single();
+        }
+
+        // Backwards-compat: DB may not have visibility yet (migration not applied).
+        if (insert.error && isMissingColumnInSchemaCache(insert.error, 'boards', 'visibility')) {
+          const retryData = { ...(boardData as any) };
+          delete retryData.visibility;
           insert = await supabase.from('boards').insert(retryData).select().single();
         }
 
@@ -520,10 +660,34 @@ export const boardsService = {
         }
       }
 
-      // 4. Return complete board
+      // 4. Apply the access allowlist for restricted boards.
+      // Non-fatal: o board já existe e, sem membros, continua acessível ao
+      // admin e ao criador — melhor avisar do que reverter a criação.
+      const visibility: BoardVisibility = board.visibility === 'restricted' ? 'restricted' : 'org';
+      const { error: membersError } = await syncBoardMembers(
+        newBoard.id,
+        organizationId,
+        visibility,
+        board.memberIds
+      );
+      if (membersError) {
+        console.error('[boards] Falha ao salvar acessos do board (não-fatal):', membersError.message);
+      }
+
+      // 5. Return complete board
       // Use the inserted stages directly
       const result = {
-        data: transformBoard(newBoard as DbBoard, insertedStages),
+        data: transformBoard(
+          newBoard as DbBoard,
+          insertedStages,
+          visibility === 'restricted'
+            ? (board.memberIds || []).map(userId => ({
+                board_id: newBoard.id,
+                user_id: userId,
+                organization_id: organizationId,
+              }))
+            : []
+        ),
         error: null
       };
       return result;
@@ -536,10 +700,12 @@ export const boardsService = {
     try {
       if (!supabase) return { error: new Error('Supabase não configurado') };
 
-      // Needed to safely upsert stages with the proper org_id.
+      // Needed to safely upsert stages with the proper org_id, and to know the
+      // current visibility when the caller only sends `memberIds`.
+      // `*` em vez de colunas nomeadas: `visibility` pode não existir ainda.
       const { data: boardRow } = await supabase
         .from('boards')
-        .select('organization_id')
+        .select('*')
         .eq('id', id)
         .maybeSingle();
       const organizationId =
@@ -560,6 +726,9 @@ export const boardsService = {
       if (updates.lostStayInStage !== undefined) dbUpdates.lost_stay_in_stage = updates.lostStayInStage;
       if (updates.defaultProductId !== undefined) dbUpdates.default_product_id = sanitizeUUID(updates.defaultProductId as any);
       if (updates.entryTrigger !== undefined) dbUpdates.entry_trigger = updates.entryTrigger || null;
+      if (updates.visibility !== undefined) {
+        dbUpdates.visibility = updates.visibility === 'restricted' ? 'restricted' : 'org';
+      }
       if (updates.agentGoalStageId !== undefined) (dbUpdates as any).agent_goal_stage_id = updates.agentGoalStageId || null;
       if (updates.automationSuggestions !== undefined) dbUpdates.automation_suggestions = updates.automationSuggestions || null;
 
@@ -588,6 +757,17 @@ export const boardsService = {
       if (error && isMissingColumnInSchemaCache(error, 'boards', 'key')) {
         const retryUpdates = { ...(dbUpdates as any) };
         delete retryUpdates.key;
+        const retry = await supabase
+          .from('boards')
+          .update(retryUpdates)
+          .eq('id', id);
+        error = retry.error as any;
+      }
+
+      // Backwards-compat: ignore visibility updates if column isn't present yet.
+      if (error && isMissingColumnInSchemaCache(error, 'boards', 'visibility')) {
+        const retryUpdates = { ...(dbUpdates as any) };
+        delete retryUpdates.visibility;
         const retry = await supabase
           .from('boards')
           .update(retryUpdates)
@@ -649,6 +829,27 @@ export const boardsService = {
             // We allow this to pass so the other updates (name, settings) are preserved.
           }
         }
+      }
+
+      // Access allowlist. Só mexe quando o chamador tocou em visibilidade —
+      // um update de nome/estágios não pode zerar os acessos por omissão.
+      if (updates.visibility !== undefined || updates.memberIds !== undefined) {
+        if (!organizationId) {
+          return { error: new Error('Organização não identificada para atualizar os acessos deste board. Recarregue a página e tente novamente.') };
+        }
+
+        const nextVisibility: BoardVisibility =
+          updates.visibility !== undefined
+            ? (updates.visibility === 'restricted' ? 'restricted' : 'org')
+            : ((boardRow as any)?.visibility === 'restricted' ? 'restricted' : 'org');
+
+        const { error: membersError } = await syncBoardMembers(
+          id,
+          organizationId,
+          nextVisibility,
+          updates.memberIds
+        );
+        if (membersError) return { error: membersError };
       }
 
       return { error: null };

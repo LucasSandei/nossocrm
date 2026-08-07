@@ -52,12 +52,22 @@ export async function GET(req: Request) {
 
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('organization_id')
+      .select('organization_id, role')
       .eq('id', user.id)
       .single();
 
     if (profileError || !profile?.organization_id) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+    }
+
+    // Exportar a base inteira em CSV contorna qualquer restrição de
+    // visibilidade da UI (inclusive pipelines restritos), então é admin-only.
+    // Esconder o botão não basta: a rota é chamável direto.
+    if (profile.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Somente administradores podem exportar contatos.' },
+        { status: 403 }
+      );
     }
 
     const orgId = profile.organization_id;

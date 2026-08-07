@@ -1,11 +1,13 @@
 import React, { useMemo, useState, useId } from 'react';
-import { Plus, GripVertical, Trash2, ChevronDown, Settings, Copy, Bot } from 'lucide-react';
-import { Board, BoardStage, ContactStage } from '@/types';
+import { Plus, GripVertical, Trash2, ChevronDown, Settings, Copy, Bot, Crown, Lock, Users } from 'lucide-react';
+import { Board, BoardStage, BoardVisibility, ContactStage } from '@/types';
 import { BOARD_TEMPLATES, BoardTemplateType } from '@/lib/templates/board-templates';
 import { LifecycleSettingsModal } from '@/features/settings/components/LifecycleSettingsModal';
 import { BoardAIConfigModal } from './BoardAIConfigModal';
 import { useLifecycleStages } from '@/lib/query/hooks/useLifecycleStagesQuery';
 import { useActiveProducts } from '@/lib/query/hooks/useProductsQuery';
+import { useOrgMembersQuery } from '@/lib/query/hooks/useOrgMembersQuery';
+import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { Modal } from '@/components/ui/Modal';
 import { MODAL_FOOTER_CLASS } from '@/components/ui/modalStyles';
@@ -122,6 +124,10 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
 
   const { data: lifecycleStages = [] } = useLifecycleStages();
   const { data: products = [] } = useActiveProducts();
+  const { profile } = useAuth();
+  const isAdmin = profile?.role === 'admin';
+  // Só admin gerencia acesso; para os demais a query nem é disparada.
+  const { data: orgMembers = [] } = useOrgMembersQuery();
   const { addToast } = useToast();
   const [name, setName] = useState('');
   const [boardKey, setBoardKey] = useState('');
@@ -136,6 +142,8 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
   const [defaultProductId, setDefaultProductId] = useState<string>('');
   const [selectedTemplate, setSelectedTemplate] = useState<BoardTemplateType | ''>('');
   const [stages, setStages] = useState<BoardStage[]>([]);
+  const [visibility, setVisibility] = useState<BoardVisibility>('org');
+  const [memberIds, setMemberIds] = useState<string[]>([]);
   const [isLifecycleModalOpen, setIsLifecycleModalOpen] = useState(false);
   const [isAIConfigModalOpen, setIsAIConfigModalOpen] = useState(false);
   const [draggingStageId, setDraggingStageId] = useState<string | null>(null);
@@ -157,6 +165,8 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
         setDefaultProductId(editingBoard.defaultProductId || '');
         setSelectedTemplate(editingBoard.template || '');
         setStages(editingBoard.stages);
+        setVisibility(editingBoard.visibility === 'restricted' ? 'restricted' : 'org');
+        setMemberIds(editingBoard.memberIds || []);
       } else {
         // Restore draft (so we can close modal immediately on save and re-open on error without losing inputs)
         try {
@@ -177,6 +187,8 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
               setDefaultProductId(String(draft.defaultProductId ?? ''));
               setSelectedTemplate((draft.selectedTemplate as BoardTemplateType) ?? '');
               setStages(Array.isArray(draft.stages) ? draft.stages : []);
+              setVisibility(draft.visibility === 'restricted' ? 'restricted' : 'org');
+              setMemberIds(Array.isArray(draft.memberIds) ? draft.memberIds : []);
               return;
             }
           }
@@ -196,6 +208,8 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
         setLostStayInStage(false);
         setDefaultProductId('');
         setSelectedTemplate('');
+        setVisibility('org');
+        setMemberIds([]);
         setStages([
           { id: crypto.randomUUID(), label: 'Nova', color: 'bg-blue-500' },
           { id: crypto.randomUUID(), label: 'Em Progresso', color: 'bg-yellow-500' },
@@ -211,6 +225,23 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
     () => availableBoards.filter(b => b.id !== editingBoard?.id),
     [availableBoards, editingBoard?.id]
   );
+
+  // Admins enxergam qualquer pipeline pela RLS — listá-los como opção
+  // sugeriria que dá para excluí-los, o que não é verdade.
+  const selectableMembers = useMemo(
+    () => orgMembers.filter(m => m.role !== 'admin'),
+    [orgMembers]
+  );
+  const adminMembers = useMemo(
+    () => orgMembers.filter(m => m.role === 'admin'),
+    [orgMembers]
+  );
+
+  const toggleMember = (userId: string) => {
+    setMemberIds(prev =>
+      prev.includes(userId) ? prev.filter(id => id !== userId) : [...prev, userId]
+    );
+  };
 
   const handleAddStage = () => {
     const colorIndex = stages.length % STAGE_COLORS.length;
@@ -294,7 +325,12 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
       defaultProductId: (defaultProductId || null) as any,
       template: selectedTemplate || 'CUSTOM',
       stages,
-      isDefault: false
+      isDefault: false,
+      // Não-admin não edita acesso: preserva o que já estava salvo.
+      visibility: isAdmin ? visibility : (editingBoard?.visibility ?? 'org'),
+      memberIds: isAdmin
+        ? (visibility === 'restricted' ? memberIds : [])
+        : (editingBoard?.memberIds ?? []),
     };
     // Persist draft before closing (so we can restore on error)
     try {
@@ -314,6 +350,8 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
           defaultProductId,
           selectedTemplate,
           stages,
+          visibility,
+          memberIds,
         })
       );
     } catch {
@@ -462,6 +500,115 @@ export const CreateBoardModal: React.FC<CreateBoardModalProps> = ({
                   className="w-full px-4 py-2.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 />
               </div>
+
+              {/* Access control (admin only) */}
+              {isAdmin && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    🔒 Quem pode ver este pipeline
+                  </label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setVisibility('org')}
+                      aria-pressed={visibility === 'org'}
+                      className={`relative p-3 rounded-xl border-2 text-left transition-all ${
+                        visibility === 'org'
+                          ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                          : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Users
+                          size={16}
+                          className={visibility === 'org' ? 'text-primary-600 dark:text-primary-400' : 'text-slate-400'}
+                          aria-hidden="true"
+                        />
+                        <span className="font-medium text-sm text-slate-900 dark:text-white">
+                          Toda a equipe
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        Todos os usuários da organização.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setVisibility('restricted')}
+                      aria-pressed={visibility === 'restricted'}
+                      className={`relative p-3 rounded-xl border-2 text-left transition-all ${
+                        visibility === 'restricted'
+                          ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                          : 'border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Lock
+                          size={16}
+                          className={visibility === 'restricted' ? 'text-primary-600 dark:text-primary-400' : 'text-slate-400'}
+                          aria-hidden="true"
+                        />
+                        <span className="font-medium text-sm text-slate-900 dark:text-white">
+                          Somente selecionados
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        {visibility === 'restricted' && memberIds.length > 0
+                          ? `${memberIds.length} usuário${memberIds.length > 1 ? 's' : ''} com acesso.`
+                          : 'Escolha quem enxerga o pipeline.'}
+                      </p>
+                    </button>
+                  </div>
+
+                  {visibility === 'restricted' && (
+                    <div className="mt-3 rounded-xl border border-slate-200 dark:border-white/10 divide-y divide-slate-100 dark:divide-white/5 max-h-56 overflow-y-auto">
+                      {selectableMembers.length === 0 ? (
+                        <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
+                          Nenhum vendedor ou usuário de suporte na equipe ainda.
+                        </p>
+                      ) : (
+                        selectableMembers.map(member => (
+                          <label
+                            key={member.id}
+                            className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={memberIds.includes(member.id)}
+                              onChange={() => toggleMember(member.id)}
+                              className="h-4 w-4 rounded border-slate-300 dark:border-white/20 text-primary-600 focus:ring-primary-500"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-sm text-slate-900 dark:text-white truncate">
+                                {member.name}
+                              </span>
+                              {member.email && member.email !== member.name && (
+                                <span className="block text-xs text-slate-400 truncate">
+                                  {member.email}
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  )}
+
+                  {visibility === 'restricted' && (
+                    <p className="mt-2 flex items-start gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                      <Crown size={13} className="mt-0.5 shrink-0 text-amber-500" aria-hidden="true" />
+                      <span>
+                        {adminMembers.length === 1
+                          ? 'Administradores sempre enxergam todos os pipelines.'
+                          : `Os ${adminMembers.length} administradores sempre enxergam todos os pipelines.`}
+                        {' '}Restringir esconde também os negócios deste pipeline do Dashboard, Relatórios e Atividades de quem não tem acesso.
+                      </span>
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Template Selection (only for new boards) */}
               {!editingBoard && (
