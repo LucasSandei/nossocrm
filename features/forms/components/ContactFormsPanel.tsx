@@ -62,7 +62,9 @@ const AnswerRow: React.FC<{ answer: FormAnswer }> = ({ answer }) => (
       </p>
     ) : (
       <p className="mt-0.5 text-sm text-slate-900 dark:text-white whitespace-pre-wrap break-words">
-        {formatAnswerValue(answer.value)}
+        {/* `display_value` vem do Forms já com o enunciado da alternativa —
+            sem ele, escolha aparece como o código gravado ("a"). */}
+        {answer.display_value || formatAnswerValue(answer.value)}
       </p>
     )}
   </div>

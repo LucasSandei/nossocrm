@@ -42,6 +42,8 @@ export interface FormsAnswer {
   question: string;
   type: string;
   value: unknown;
+  /** Texto pronto para exibir quando o valor cru é código de alternativa. */
+  display_value?: string | null;
   is_sensitive: boolean;
   answered_at: string;
 }

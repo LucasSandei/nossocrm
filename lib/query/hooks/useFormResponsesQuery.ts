@@ -15,6 +15,12 @@ export interface FormAnswer {
   question: string;
   type: string;
   value: unknown;
+  /**
+   * Texto pronto para exibir, quando o valor cru não se explica sozinho.
+   * Alternativa de escolha fica gravada no Forms como código ("a"); aqui vem
+   * o enunciado ("Dor na entrada"). Ausente quando `value` já é legível.
+   */
+  display_value?: string | null;
   is_sensitive: boolean;
   answered_at: string;
 }
