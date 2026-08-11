@@ -3,7 +3,17 @@
  *
  * Endpoint público para receber leads de Hotmart/forms/n8n/Make e criar:
  * - Contato (upsert por email/telefone)
- * - Deal (no board + estágio configurados na fonte)
+ * - Deal (no board + estágio resolvidos pelas regras de roteamento)
+ *
+ * Roteamento:
+ * - `inbound_routing_rules` decide board, coluna, etiquetas e dono a partir da
+ *   atribuição do payload (`link_id`, `utm_*`, `form_id`).
+ * - As regras são avaliadas por `priority` (menor primeiro) e a primeira que
+ *   casar vence, para que o destino tenha sempre uma explicação única.
+ * - Fonte sem regras, lead que não casa com nenhuma, ou falha ao ler as regras
+ *   caem em `entry_board_id`/`entry_stage_id` — o comportamento anterior.
+ * - A regra aplicada fica gravada em `deals.custom_fields.inbound_rule_id` e
+ *   volta no campo `routing` da resposta.
  *
  * Rota (Supabase Edge Functions):
  * - `POST /functions/v1/webhook-in/<source_id>`
@@ -18,6 +28,14 @@
  * - Este handler usa `SUPABASE_SERVICE_ROLE_KEY` (segredo padrão do Supabase) e ignora RLS.
  */
 import { createClient } from "npm:@supabase/supabase-js@2";
+
+import {
+  findMatchingRule,
+  getAttribution,
+  sameText,
+  type Attribution,
+  type RoutingRule,
+} from "./routing.ts";
 
 type LeadPayload = {
   /**
@@ -53,6 +71,24 @@ type LeadPayload = {
   title?: string;
   value?: number | string;
   company?: string;
+
+  // ===== Atribuição de origem =====
+  /**
+   * De onde o lead veio. Aceito aninhado (formato que o LS Forms envia) ou
+   * espalhado na raiz, para não quebrar quem já monta o payload na mão em
+   * n8n/Make. O aninhado vence quando os dois existirem.
+   */
+  attribution?: Attribution;
+  link_id?: string;
+  form_id?: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_term?: string;
+  utm_content?: string;
+  utm_id?: string;
+  gclid?: string;
+  fbclid?: string;
 };
 
 const corsHeaders = {
@@ -154,6 +190,7 @@ function getDealValue(payload: LeadPayload) {
   );
 }
 
+
 Deno.serve(async (req) => {
   // CORS preflight
   if (req.method === "OPTIONS") {
@@ -205,6 +242,99 @@ Deno.serve(async (req) => {
   const companyName = getCompanyName(payload);
   const dealTitleFromPayload = getDealTitle(payload);
   const dealValue = getDealValue(payload);
+
+  // ===================================================================
+  // Roteamento: decide board, coluna, etiquetas e dono a partir da origem
+  // ===================================================================
+  const attribution = getAttribution(payload);
+  if (!attribution.source && payload.source) attribution.source = payload.source;
+
+  let appliedRule: RoutingRule | null = null;
+  let targetBoardId: string = source.entry_board_id;
+  let targetStageId: string = source.entry_stage_id;
+  let targetTagNames: string[] = [];
+  let targetTagIds: string[] = [];
+  let targetOwnerId: string | null = null;
+
+  {
+    const { data: rules, error: rulesErr } = await supabase
+      .from("inbound_routing_rules")
+      .select("id, name, priority, conditions, match_type, board_id, stage_id, tag_ids, owner_id")
+      .eq("source_id", source.id)
+      .eq("active", true)
+      .order("priority", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    // Falha ao ler regras não pode descartar o lead: cai no destino padrão
+    // da fonte, que é exatamente o comportamento anterior a este recurso.
+    if (rulesErr) {
+      console.error("[webhook-in] falha ao carregar regras, usando destino padrão:", rulesErr.message);
+    } else {
+      appliedRule = findMatchingRule((rules ?? []) as RoutingRule[], attribution);
+    }
+  }
+
+  if (appliedRule) {
+    targetOwnerId = appliedRule.owner_id ?? null;
+
+    if (appliedRule.board_id) {
+      targetBoardId = appliedRule.board_id;
+
+      // A coluna precisa pertencer ao board escolhido. Se a regra ficou
+      // inconsistente (board trocado depois, coluna apagada), usar a coluna
+      // órfã criaria um card invisível no funil — melhor cair na primeira
+      // coluna do board de destino.
+      let stageOk = false;
+      if (appliedRule.stage_id) {
+        const { data: stage } = await supabase
+          .from("board_stages")
+          .select("id, board_id")
+          .eq("id", appliedRule.stage_id)
+          .maybeSingle();
+        if (stage && stage.board_id === targetBoardId) {
+          targetStageId = appliedRule.stage_id;
+          stageOk = true;
+        }
+      }
+
+      if (!stageOk) {
+        const { data: firstStage } = await supabase
+          .from("board_stages")
+          .select("id")
+          .eq("board_id", targetBoardId)
+          .order("order", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (firstStage?.id) targetStageId = firstStage.id as string;
+      }
+    }
+
+    // Etiquetas são guardadas por id (renomear a etiqueta não quebra a regra),
+    // mas `deals.tags` é texto — daí a resolução aqui.
+    const tagIds = Array.isArray(appliedRule.tag_ids) ? appliedRule.tag_ids.filter(Boolean) : [];
+    if (tagIds.length > 0) {
+      const { data: tagRows } = await supabase
+        .from("tags")
+        .select("id, name")
+        .eq("organization_id", source.organization_id)
+        .in("id", tagIds);
+      targetTagNames = (tagRows ?? [])
+        .map((t: { name: string }) => t.name)
+        .filter((n): n is string => Boolean(n));
+      // Só as etiquetas que realmente existem nesta organização — id vindo de
+      // regra antiga cujo catálogo mudou não pode virar vínculo quebrado.
+      targetTagIds = (tagRows ?? []).map((t: { id: string }) => t.id).filter(Boolean);
+    }
+  }
+
+  const inboundMetadata = {
+    inbound_source_id: source.id,
+    inbound_external_event_id: externalEventId,
+    inbound_company_name: companyName,
+    inbound_rule_id: appliedRule?.id ?? null,
+    inbound_rule_name: appliedRule?.name ?? null,
+    attribution: Object.keys(attribution).length > 0 ? attribution : null,
+  };
 
   // 1) Auditoria/dedupe (idempotente quando external_event_id existe)
   if (externalEventId) {
@@ -351,6 +481,27 @@ Deno.serve(async (req) => {
     }
   }
 
+  // 2.5) Etiquetas do contato (best-effort).
+  // O card guarda etiqueta como texto; o contato usa o catálogo. Aplicar nos
+  // dois deixa o lead filtrável tanto no funil quanto na lista de contatos.
+  if (contactId && targetTagIds.length > 0) {
+    try {
+      await supabase
+        .from("contact_tags")
+        .upsert(
+          targetTagIds.map((tagId) => ({
+            organization_id: source.organization_id,
+            contact_id: contactId,
+            tag_id: tagId,
+          })),
+          { onConflict: "contact_id,tag_id", ignoreDuplicates: true },
+        );
+    } catch (e) {
+      // Etiqueta é enriquecimento: nunca vale perder o lead por causa dela.
+      console.error("[webhook-in] falha ao vincular etiquetas ao contato:", e);
+    }
+  }
+
   // 3) Deal (cadastro/upsert):
   // - Se já existir um deal "em aberto" do mesmo contato no mesmo board, atualiza em vez de criar outro.
   // - Se não existir (ou não tiver contato), cria.
@@ -362,9 +513,12 @@ Deno.serve(async (req) => {
   if (contactId) {
     const { data: existingDeal, error: findDealErr } = await supabase
       .from("deals")
-      .select("id, stage_id, is_won, is_lost")
+      .select("id, stage_id, is_won, is_lost, owner_id, tags")
       .eq("organization_id", source.organization_id)
-      .eq("board_id", source.entry_board_id)
+      // Board resolvido pela regra, não o padrão da fonte: senão um lead
+      // roteado para outro funil não encontraria o próprio card e viraria
+      // duplicata a cada novo envio.
+      .eq("board_id", targetBoardId)
       .eq("contact_id", contactId)
       .eq("is_won", false)
       .eq("is_lost", false)
@@ -389,11 +543,21 @@ Deno.serve(async (req) => {
 
       // mantém stage atual (não “puxa” de volta pro stage de entrada)
       // apenas carimba metadados do inbound
-      updates.custom_fields = {
-        inbound_source_id: source.id,
-        inbound_external_event_id: externalEventId,
-        inbound_company_name: companyName,
-      };
+      updates.custom_fields = inboundMetadata;
+
+      // Dono só é preenchido, nunca sobrescrito: se alguém já assumiu o card,
+      // uma nova resposta do mesmo lead não pode tirá-lo de quem o atende.
+      if (targetOwnerId && !existingDeal.owner_id) updates.owner_id = targetOwnerId;
+
+      // Etiquetas somam com as que já existem, sem duplicar.
+      if (targetTagNames.length > 0) {
+        const current = Array.isArray(existingDeal.tags) ? existingDeal.tags as string[] : [];
+        const merged = [...current];
+        for (const tag of targetTagNames) {
+          if (!merged.some((t) => sameText(t, tag))) merged.push(tag);
+        }
+        if (merged.length !== current.length) updates.tags = merged;
+      }
 
       const { error: updDealErr } = await supabase
         .from("deals")
@@ -413,17 +577,16 @@ Deno.serve(async (req) => {
         value: dealValue ?? 0,
         probability: 10,
         priority: "medium",
-        board_id: source.entry_board_id,
-        stage_id: source.entry_stage_id,
+        board_id: targetBoardId,
+        stage_id: targetStageId,
         contact_id: contactId,
         client_company_id: clientCompanyId,
+        owner_id: targetOwnerId,
         last_stage_change_date: new Date().toISOString(),
-        tags: ["Novo"],
-        custom_fields: {
-          inbound_source_id: source.id,
-          inbound_external_event_id: externalEventId,
-          inbound_company_name: companyName,
-        },
+        // "Novo" continua sendo o padrão de card recém-chegado; as etiquetas
+        // da regra entram junto, sem repetir se a regra já incluir "Novo".
+        tags: ["Novo", ...targetTagNames.filter((t) => !sameText(t, "Novo"))],
+        custom_fields: inboundMetadata,
       })
       .select("id")
       .single();
@@ -460,6 +623,17 @@ Deno.serve(async (req) => {
     organization_id: source.organization_id,
     contact_id: contactId,
     deal_id: dealId,
+    // Por que o lead caiu onde caiu. Sem isto, depurar roteamento exige ler
+    // log de Edge Function — e quem configurou a regra não tem esse acesso.
+    routing: {
+      rule_id: appliedRule?.id ?? null,
+      rule_name: appliedRule?.name ?? null,
+      matched: appliedRule !== null,
+      board_id: targetBoardId,
+      stage_id: targetStageId,
+      owner_id: targetOwnerId,
+      tags: targetTagNames,
+    },
   });
 });
 
