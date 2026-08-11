@@ -1,6 +1,18 @@
 import { z } from 'zod';
 import { createStaticAdminClient } from '@/lib/supabase/server';
 import { isAllowedOrigin } from '@/lib/security/sameOrigin';
+import { checkRateLimit, getClientIp, rateLimitResponse } from '@/lib/rate-limit';
+
+/**
+ * Teto de cadastros por IP por hora.
+ *
+ * `isAllowedOrigin` não protege este endpoint contra automação: ele libera a
+ * requisição quando o header `Origin` está ausente, o que é sempre o caso em
+ * chamadas fora do browser. Sem um limite, dava para criar organizações e
+ * usuários em massa.
+ */
+const SIGNUPS_PER_WINDOW = Number(process.env.SIGNUP_RATE_LIMIT || 5);
+const SIGNUP_WINDOW_SECONDS = 3600;
 
 function json<T>(body: T, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -26,6 +38,14 @@ const SignupSchema = z
  */
 export async function POST(req: Request) {
   if (!isAllowedOrigin(req)) return json({ error: 'Forbidden' }, 403);
+
+  const limit = await checkRateLimit({
+    identifier: `ip:${getClientIp(req)}`,
+    endpoint: 'signup',
+    limit: SIGNUPS_PER_WINDOW,
+    windowSeconds: SIGNUP_WINDOW_SECONDS,
+  });
+  if (!limit.ok) return rateLimitResponse(limit);
 
   const raw = await req.json().catch(() => null);
   const parsed = SignupSchema.safeParse(raw);

@@ -3,18 +3,25 @@
 import { usePathname } from 'next/navigation'
 import { useEffect } from 'react'
 
+import type { User } from '@supabase/supabase-js'
+
 import { QueryProvider } from '@/lib/query'
 import { ToastProvider } from '@/context/ToastContext'
 import { ThemeProvider } from '@/context/ThemeContext'
-import { AuthProvider } from '@/context/AuthContext'
+import { AuthProvider, type Profile } from '@/context/AuthContext'
 import { AIProvider } from '@/context/AIContext'
 import Layout from '@/components/Layout'
 import { TooltipProvider } from '@/components/ui/tooltip'
 
 export default function ProtectedShell({
     children,
+    initialUser = null,
+    initialProfile = null,
 }: {
     children: React.ReactNode
+    /** Sessão já resolvida no servidor — evita a cascata de auth no cliente. */
+    initialUser?: User | null
+    initialProfile?: Profile | null
 }) {
     const pathname = usePathname()
     const isSetupRoute = pathname === '/setup'
@@ -63,7 +70,7 @@ export default function ProtectedShell({
         <QueryProvider>
             <ToastProvider>
                 <ThemeProvider>
-                    <AuthProvider>
+                    <AuthProvider initialUser={initialUser} initialProfile={initialProfile}>
                         <AIProvider>
                             <TooltipProvider delayDuration={200}>
                                 {shouldUseAppShell ? <Layout>{children}</Layout> : children}

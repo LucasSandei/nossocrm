@@ -314,13 +314,19 @@ export const goalsService = {
 
     const pending = source.filter((g) => !taken.has(g.userId ?? 'team'));
 
-    for (const goal of pending) {
-      await this.saveGoal({
-        userId: goal.userId,
-        monthKey: toMonth,
-        targetAmount: goal.targetAmount,
-      });
-    }
+    // Cada `saveGoal` custa ~4 idas ao banco e antes rodavam em série, somando
+    // a latência de todas as metas. As pendentes têm `userId` distinto entre si
+    // (o filtro acima é por usuário), então não competem pelo mesmo registro e
+    // podem ir em paralelo sem alterar o resultado.
+    await Promise.all(
+      pending.map((goal) =>
+        this.saveGoal({
+          userId: goal.userId,
+          monthKey: toMonth,
+          targetAmount: goal.targetAmount,
+        })
+      )
+    );
 
     return pending.length;
   },

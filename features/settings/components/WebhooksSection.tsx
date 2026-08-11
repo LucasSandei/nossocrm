@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Webhook, ArrowRight, Copy, Check, Link as LinkIcon, Pencil, Power, Trash2, KeyRound, HelpCircle } from 'lucide-react';
 import { SettingsSection } from './SettingsSection';
+import { InboundRoutingRules } from './InboundRoutingRules';
 import { Modal } from '@/components/ui/Modal';
 import { ConfirmDialog as ConfirmModal } from '@/components/ui/confirm-dialog';
 import { useBoards } from '@/lib/query/hooks/useBoardsQuery';
@@ -552,6 +553,12 @@ export const WebhooksSection: React.FC = () => {
                     Excluir
                   </button>
                 </div>
+
+                <InboundRoutingRules
+                  sourceId={activeInbound.id}
+                  fallbackBoardName={inboundBoardName ?? undefined}
+                  fallbackStageName={inboundStageLabel ?? undefined}
+                />
               </div>
             ) : (
               <div className="mt-4">
