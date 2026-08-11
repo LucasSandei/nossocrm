@@ -1,18 +1,20 @@
 import { z } from 'zod';
 import { isAllowedOrigin } from '@/lib/security/sameOrigin';
 import { createClient } from '@supabase/supabase-js';
+import { guardInstallerRoute } from '@/lib/installer/guard';
 
 export const maxDuration = 60;
 export const runtime = 'nodejs';
 
 const RollbackSchema = z.object({
+  installerToken: z.string().optional(),
   supabase: z.object({
     url: z.string().url(),
     serviceRoleKey: z.string().min(1),
   }),
   actions: z.array(z.enum([
     'delete_admin',
-    'delete_organization', 
+    'delete_organization',
     'truncate_tables',
   ])).min(1),
 });
@@ -23,22 +25,24 @@ export async function POST(req: Request) {
 
   log('🔄 START');
 
-  // Guard: installer must be explicitly enabled to use rollback
-  if (process.env.INSTALLER_ENABLED === 'false') {
-    log('ERROR: Installer is disabled');
-    return Response.json({ error: 'Installer is disabled' }, { status: 403 });
-  }
-
   if (!isAllowedOrigin(req)) {
     return Response.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const raw = await req.json().catch(() => null);
   const parsed = RollbackSchema.safeParse(raw);
-  
+
   if (!parsed.success) {
     log('ERROR: Invalid payload');
     return Response.json({ error: 'Invalid payload', details: parsed.error.flatten() }, { status: 400 });
+  }
+
+  // Rota destrutiva (apaga admin, organização e trunca tabelas): além do
+  // INSTALLER_ENABLED, exige token quando a instância já foi inicializada.
+  const guard = await guardInstallerRoute(parsed.data.installerToken);
+  if (!guard.ok) {
+    log(`ERROR: ${guard.error}`);
+    return Response.json({ error: guard.error }, { status: guard.status });
   }
 
   const { supabase: supabaseConfig, actions } = parsed.data;

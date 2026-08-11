@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isAllowedOrigin } from '@/lib/security/sameOrigin';
+import { guardInstallerRoute } from '@/lib/installer/guard';
 import { runSchemaMigration } from '@/lib/installer/migrations';
 import { bootstrapInstance } from '@/lib/installer/supabase';
 import { triggerProjectRedeploy, upsertProjectEnvs, waitForVercelDeploymentReady } from '@/lib/installer/vercel';
@@ -253,19 +254,15 @@ export async function POST(req: Request) {
     return new Response(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
   }
 
-  if (process.env.INSTALLER_ENABLED === 'false') {
-    return new Response(JSON.stringify({ error: 'Installer disabled' }), { status: 403 });
-  }
-
   const raw = await req.json().catch(() => null);
   const parsed = RunSchema.safeParse(raw);
   if (!parsed.success) {
     return new Response(JSON.stringify({ error: 'Invalid payload', details: parsed.error.flatten() }), { status: 400 });
   }
 
-  const expectedToken = process.env.INSTALLER_TOKEN;
-  if (expectedToken && parsed.data.installerToken !== expectedToken) {
-    return new Response(JSON.stringify({ error: 'Invalid installer token' }), { status: 403 });
+  const guard = await guardInstallerRoute(parsed.data.installerToken);
+  if (!guard.ok) {
+    return new Response(JSON.stringify({ error: guard.error }), { status: guard.status });
   }
 
   const { vercel, supabase, admin, healthCheck } = parsed.data;

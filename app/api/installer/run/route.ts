@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isAllowedOrigin } from '@/lib/security/sameOrigin';
+import { guardInstallerRoute } from '@/lib/installer/guard';
 import { runSchemaMigration } from '@/lib/installer/migrations';
 import { bootstrapInstance } from '@/lib/installer/supabase';
 import { triggerProjectRedeploy, upsertProjectEnvs } from '@/lib/installer/vercel';
@@ -72,20 +73,14 @@ function updateStep(steps: Step[], id: string, status: StepStatus, message?: str
 export async function POST(req: Request) {
   if (!isAllowedOrigin(req)) return json({ error: 'Forbidden' }, 403);
 
-  if (process.env.INSTALLER_ENABLED === 'false') {
-    return json({ error: 'Installer disabled' }, 403);
-  }
-
   const raw = await req.json().catch(() => null);
   const parsed = RunSchema.safeParse(raw);
   if (!parsed.success) {
     return json({ error: 'Invalid payload', details: parsed.error.flatten() }, 400);
   }
 
-  const expectedToken = process.env.INSTALLER_TOKEN;
-  if (expectedToken && parsed.data.installerToken !== expectedToken) {
-    return json({ error: 'Invalid installer token' }, 403);
-  }
+  const guard = await guardInstallerRoute(parsed.data.installerToken);
+  if (!guard.ok) return json({ error: guard.error }, guard.status);
 
   const steps: Step[] = [];
   let currentStep: string | null = null;
