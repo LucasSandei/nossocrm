@@ -139,20 +139,36 @@ export async function fetchConversationsForLearning(
     throw new Error('No conversations found');
   }
 
-  // Buscar mensagens para cada conversa
+  // Busca as mensagens de todas as conversas em uma única query.
+  // Antes havia uma query por conversa, em série (N+1): com 20 conversas eram
+  // 20 idas ao banco encadeadas. O índice (conversation_id, created_at) atende
+  // este acesso, e a ordenação global por created_at preserva a ordem dentro de
+  // cada conversa no agrupamento abaixo.
+  const { data: allMessages, error: msgError } = await supabase
+    .from('messaging_messages')
+    .select('id, conversation_id, direction, content, created_at')
+    .in('conversation_id', conversations.map((c) => c.id))
+    .order('created_at', { ascending: true });
+
+  if (msgError) {
+    // Comportamento preservado: quando não era possível ler as mensagens, a
+    // conversa era descartada. Falhando a busca inteira, nenhuma se qualifica.
+    console.error('[FewShotLearner] Error fetching messages:', msgError);
+    return [];
+  }
+
+  const messagesByConversation = new Map<string, typeof allMessages>();
+  for (const message of allMessages || []) {
+    const key = message.conversation_id as string;
+    const bucket = messagesByConversation.get(key);
+    if (bucket) bucket.push(message);
+    else messagesByConversation.set(key, [message]);
+  }
+
   const result: ConversationForLearning[] = [];
 
   for (const conv of conversations) {
-    const { data: messages, error: msgError } = await supabase
-      .from('messaging_messages')
-      .select('id, direction, content, created_at')
-      .eq('conversation_id', conv.id)
-      .order('created_at', { ascending: true });
-
-    if (msgError) {
-      console.error(`[FewShotLearner] Error fetching messages for ${conv.id}:`, msgError);
-      continue;
-    }
+    const messages = messagesByConversation.get(conv.id) || [];
 
     // Supabase retorna objetos ou arrays dependendo da relação
     const dealData = conv.deal as unknown;
