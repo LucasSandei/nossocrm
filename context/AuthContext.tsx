@@ -27,7 +27,7 @@
  * ```
  */
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { queryClient } from '../lib/query';
@@ -50,7 +50,7 @@ import type { OrganizationId } from '../types';
  * @property {string | null} [avatar_url] - URL do avatar
  * @property {string} [created_at] - Data de criação
  */
-interface Profile {
+export interface Profile {
     id: string;
     email: string;
     organization_id: OrganizationId;
@@ -113,16 +113,35 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  * }
  * ```
  */
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{
+    children: React.ReactNode;
+    /**
+     * Usuário resolvido no servidor (ver `app/(protected)/layout.tsx`).
+     *
+     * O `proxy.ts` já valida e renova a sessão antes da página chegar ao browser,
+     * então repetir `getUser()` + `fetchProfile()` no cliente criava duas idas à
+     * rede em série com a tela em branco. Recebendo o estado pronto, o provider
+     * já nasce com `loading = false` e as queries de página disparam de imediato.
+     */
+    initialUser?: User | null;
+    /** Perfil resolvido no servidor, no mesmo request do `initialUser`. */
+    initialProfile?: Profile | null;
+}> = ({ children, initialUser = null, initialProfile = null }) => {
     const [session, setSession] = useState<Session | null>(null);
-    const [user, setUser] = useState<User | null>(null);
-    const [profile, setProfile] = useState<Profile | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [user, setUser] = useState<User | null>(initialUser);
+    const [profile, setProfile] = useState<Profile | null>(initialProfile);
+    // Só começa carregando quando o servidor não conseguiu resolver o perfil —
+    // aí o fluxo antigo (client-side) assume, sem regressão.
+    const [loading, setLoading] = useState(!initialProfile);
     const [isInitialized, setIsInitialized] = useState<boolean | null>(null);
 
     // Supabase client pode ser null quando envs não estão configuradas.
     // O app real exige Supabase configurado, mas este guard evita falha no build.
     const sb = supabase;
+
+    // Guarda o id do usuário hidratado pelo servidor até o primeiro
+    // `onAuthStateChange` consumi-lo, para não refazer o fetch do perfil.
+    const hydratedUserIdRef = useRef<string | null>(initialProfile ? initialUser?.id ?? null : null);
 
     const checkInitialization = useCallback(async () => {
         try {
@@ -185,26 +204,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         checkInitialization();
 
-        sb.auth.getUser().then(({ data: { user }, error }) => {
-            if (error) {
-                console.error('Error getting user:', error);
-                setLoading(false);
-                return;
-            }
-            setUser(user);
-            if (user) {
-                fetchProfile(user.id);
-            } else {
-                setLoading(false);
-            }
-        });
+        // Quando o servidor já entregou o perfil, pular o `getUser()` inicial:
+        // ele só redescobriria, com latência de rede, o que o proxy já validou.
+        if (!hydratedUserIdRef.current) {
+            sb.auth.getUser().then(({ data: { user }, error }) => {
+                if (error) {
+                    console.error('Error getting user:', error);
+                    setLoading(false);
+                    return;
+                }
+                setUser(user);
+                if (user) {
+                    fetchProfile(user.id);
+                } else {
+                    setLoading(false);
+                }
+            });
+        }
 
         const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
             setSession(session);
             setUser(session?.user ?? null);
             if (session?.user) {
+                // O evento INITIAL_SESSION dispara no mount e traria de volta o
+                // fetch que acabamos de evitar. Se o perfil hidratado já é deste
+                // usuário, mantém o que veio do servidor; qualquer outro evento
+                // (login, troca de usuário, refresh) revalida normalmente.
+                if (hydratedUserIdRef.current === session.user.id) {
+                    hydratedUserIdRef.current = null;
+                    setLoading(false);
+                    return;
+                }
                 fetchProfile(session.user.id);
             } else {
+                hydratedUserIdRef.current = null;
                 setProfile(null);
                 setLoading(false);
             }
