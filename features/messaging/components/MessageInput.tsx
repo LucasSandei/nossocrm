@@ -11,7 +11,9 @@ declare global {
 }
 import { Send, Paperclip, Smile, Clock, FileText, X, Loader2, Image, File as FileIcon, Mic, Square, Reply } from 'lucide-react';
 import dynamic from 'next/dynamic';
-import { type EmojiClickData, Theme } from 'emoji-picker-react';
+// Import somente de tipos: `Theme` é um enum de runtime e, importado como valor,
+// arrastava o pacote inteiro (~468 KB) para o bundle estático, anulando o dynamic() abaixo.
+import type { EmojiClickData, Theme } from 'emoji-picker-react';
 
 const EmojiPicker = dynamic(() => import('emoji-picker-react'), {
   ssr: false,
@@ -683,7 +685,7 @@ export function MessageInput({ conversation, replyTo, onCancelReply }: MessageIn
               <div className="absolute bottom-full right-0 mb-2 z-50">
                 <EmojiPicker
                   onEmojiClick={handleEmojiClick}
-                  theme={Theme.AUTO}
+                  theme={'auto' as Theme}
                   width={320}
                   height={400}
                   searchPlaceholder="Buscar emoji..."
