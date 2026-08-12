@@ -42,18 +42,28 @@ type RuleRow = {
 };
 
 /** Campos de origem que o servidor sabe avaliar. Espelha `ATTRIBUTION_FIELDS`. */
-const FIELDS: { value: string; label: string; hint?: string }[] = [
-  { value: 'link_id', label: 'Link de campanha', hint: 'O identificador do link no LS Forms. É o jeito exato de separar quem divulgou.' },
-  { value: 'form_id', label: 'Formulário' },
-  { value: 'utm_source', label: 'utm_source', hint: 'Origem: instagram, google, whatsapp…' },
-  { value: 'utm_medium', label: 'utm_medium' },
-  { value: 'utm_campaign', label: 'utm_campaign' },
-  { value: 'utm_content', label: 'utm_content' },
-  { value: 'utm_term', label: 'utm_term' },
-  { value: 'utm_id', label: 'utm_id' },
-  { value: 'gclid', label: 'gclid (Google Ads)' },
-  { value: 'fbclid', label: 'fbclid (Meta Ads)' },
-  { value: 'source', label: 'Origem declarada' },
+const FIELDS: { value: string; label: string; hint?: string; placeholder?: string }[] = [
+  {
+    value: 'link_id',
+    label: 'Link de campanha',
+    hint: 'O identificador do link no LS Forms — copie em LS Forms › Compartilhar › link da vendedora. É o jeito exato de separar quem divulgou.',
+    placeholder: 'c0ffee00-0000-4000-8000-000000000001',
+  },
+  {
+    value: 'form_id',
+    label: 'Formulário',
+    hint: 'O id do formulário no LS Forms. Útil quando uma fonte recebe vários formulários.',
+    placeholder: 'id do formulário',
+  },
+  { value: 'utm_source', label: 'utm_source', hint: 'Origem: instagram, google, whatsapp… A comparação ignora maiúsculas.', placeholder: 'instagram' },
+  { value: 'utm_medium', label: 'utm_medium', placeholder: 'bio' },
+  { value: 'utm_campaign', label: 'utm_campaign', placeholder: 'lancamento-agosto' },
+  { value: 'utm_content', label: 'utm_content', placeholder: 'story-01' },
+  { value: 'utm_term', label: 'utm_term', placeholder: 'vaginismo' },
+  { value: 'utm_id', label: 'utm_id', placeholder: '1234567890' },
+  { value: 'gclid', label: 'gclid (Google Ads)', placeholder: 'valor do gclid' },
+  { value: 'fbclid', label: 'fbclid (Meta Ads)', placeholder: 'valor do fbclid' },
+  { value: 'source', label: 'Origem declarada', hint: 'O campo "Origem do contato" preenchido na integração do LS Forms.', placeholder: 'Formulário Mulheres Livres' },
 ];
 
 const OPERATORS: { value: string; label: string }[] = [
@@ -67,6 +77,14 @@ const EMPTY_CONDITION: ConditionRow = { field: 'link_id', operator: 'equals', va
 
 function fieldLabel(field: string) {
   return FIELDS.find((f) => f.value === field)?.label ?? field;
+}
+
+function fieldHint(field: string) {
+  return FIELDS.find((f) => f.value === field)?.hint;
+}
+
+function fieldPlaceholder(field: string) {
+  return FIELDS.find((f) => f.value === field)?.placeholder ?? 'valor';
 }
 
 function operatorLabel(operator: string) {
@@ -404,6 +422,10 @@ export const InboundRoutingRules: React.FC<InboundRoutingRulesProps> = ({
         isOpen={isEditorOpen}
         onClose={() => setIsEditorOpen(false)}
         title={editing ? 'Editar regra' : 'Nova regra de entrada'}
+        // Campo + operador + valor não cabem lado a lado em `max-w-md`: o valor
+        // era empurrado para fora do painel e ficava invisível.
+        size="xl"
+        className="sm:max-w-2xl"
       >
         <form onSubmit={handleSave} className="space-y-5">
           <div>
@@ -438,64 +460,88 @@ export const InboundRoutingRules: React.FC<InboundRoutingRulesProps> = ({
               )}
             </div>
 
-            <div className="space-y-2">
-              {conditions.map((condition, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <select
-                    className={inputClass + ' flex-1'}
-                    value={condition.field}
-                    onChange={(e) => {
-                      const next = [...conditions];
-                      next[index] = { ...next[index], field: e.target.value };
-                      setConditions(next);
-                    }}
+            {/*
+              Grid em vez de flex: com flex, os três controles se espremem até o
+              valor sair do painel. Em telas estreitas cada um ocupa a linha
+              inteira; a partir de `sm` voltam a ficar lado a lado.
+            */}
+            <div className="space-y-3">
+              {conditions.map((condition, index) => {
+                const hint = fieldHint(condition.field);
+                return (
+                  <div
+                    key={index}
+                    className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/30 p-2.5"
                   >
-                    {FIELDS.map((f) => (
-                      <option key={f.value} value={f.value}>
-                        {f.label}
-                      </option>
-                    ))}
-                  </select>
+                    <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,11rem)_minmax(0,1fr)_auto] gap-2 sm:items-center">
+                      <select
+                        aria-label="Campo de origem"
+                        className={inputClass}
+                        value={condition.field}
+                        onChange={(e) => {
+                          const next = [...conditions];
+                          next[index] = { ...next[index], field: e.target.value };
+                          setConditions(next);
+                        }}
+                      >
+                        {FIELDS.map((f) => (
+                          <option key={f.value} value={f.value}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </select>
 
-                  <select
-                    className={inputClass + ' flex-none w-40'}
-                    value={condition.operator}
-                    onChange={(e) => {
-                      const next = [...conditions];
-                      next[index] = { ...next[index], operator: e.target.value };
-                      setConditions(next);
-                    }}
-                  >
-                    {OPERATORS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                      <select
+                        aria-label="Operador"
+                        className={inputClass}
+                        value={condition.operator}
+                        onChange={(e) => {
+                          const next = [...conditions];
+                          next[index] = { ...next[index], operator: e.target.value };
+                          setConditions(next);
+                        }}
+                      >
+                        {OPERATORS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
 
-                  {condition.operator !== 'exists' && (
-                    <input
-                      className={inputClass + ' flex-1'}
-                      value={condition.value}
-                      onChange={(e) => {
-                        const next = [...conditions];
-                        next[index] = { ...next[index], value: e.target.value };
-                        setConditions(next);
-                      }}
-                      placeholder="valor"
-                    />
-                  )}
+                      {condition.operator === 'exists' ? (
+                        <p className="text-xs text-slate-500 dark:text-slate-400 sm:px-1">
+                          Basta o campo vir preenchido.
+                        </p>
+                      ) : (
+                        <input
+                          aria-label={`Valor de ${fieldLabel(condition.field)}`}
+                          className={inputClass}
+                          value={condition.value}
+                          onChange={(e) => {
+                            const next = [...conditions];
+                            next[index] = { ...next[index], value: e.target.value };
+                            setConditions(next);
+                          }}
+                          placeholder={fieldPlaceholder(condition.field)}
+                        />
+                      )}
 
-                  <button
-                    type="button"
-                    onClick={() => setConditions(conditions.filter((_, i) => i !== index))}
-                    className="flex-none p-2 rounded-md text-slate-400 hover:text-red-600"
-                    title="Remover condição"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
+                      <button
+                        type="button"
+                        onClick={() => setConditions(conditions.filter((_, i) => i !== index))}
+                        className="justify-self-end p-2 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        title="Remover condição"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {hint && (
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2">{hint}</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <button
@@ -518,7 +564,7 @@ export const InboundRoutingRules: React.FC<InboundRoutingRulesProps> = ({
           <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
             <span className={labelClass}>…mande para</span>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className={labelClass} htmlFor="rule-board">
                   Funil
@@ -633,7 +679,12 @@ export const InboundRoutingRules: React.FC<InboundRoutingRulesProps> = ({
             </p>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          {/*
+            Grudado no fim da área rolável: o formulário é alto e os botões
+            precisam ficar alcançáveis sem rolar até o fim. As margens negativas
+            cancelam o padding do corpo do modal para a barra encostar nas bordas.
+          */}
+          <div className="sticky bottom-0 -mx-4 sm:-mx-5 -mb-4 sm:-mb-5 flex justify-end gap-2 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-dark-card px-4 sm:px-5 py-3">
             <button
               type="button"
               onClick={() => setIsEditorOpen(false)}
