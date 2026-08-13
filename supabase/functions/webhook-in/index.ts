@@ -33,7 +33,9 @@ import {
   findMatchingRule,
   getAttribution,
   sameText,
+  sanitizeCustomFields,
   type Attribution,
+  type FieldDefinition,
   type RoutingRule,
 } from "./routing.ts";
 
@@ -54,6 +56,16 @@ type LeadPayload = {
   notes?: string;
   /** Nome da empresa (cliente) */
   company_name?: string;
+
+  /**
+   * Campos personalizados do contato, por chave.
+   *
+   * Só entram as chaves que já existem em `custom_field_definitions` para a
+   * organização: quem define o vocabulário é o CRM, não quem envia. Chave
+   * desconhecida é ignorada em silêncio, porque a alternativa seria recusar o
+   * lead inteiro por causa de um campo de enriquecimento.
+   */
+  custom_fields?: Record<string, unknown>;
 
   // ===== Campos "produto" (espelham o modal Novo Negócio) =====
   /** Nome do negócio */
@@ -123,6 +135,7 @@ function normalizePhone(phone?: string) {
   const cleaned = phone.trim();
   return cleaned || null;
 }
+
 
 function getSecretFromRequest(req: Request) {
   const xSecret = req.headers.get("X-Webhook-Secret") || "";
@@ -422,6 +435,26 @@ Deno.serve(async (req) => {
     }
   }
 
+  /*
+   * Campos personalizados do contato, validados contra o catálogo da própria
+   * organização. Falha na leitura das definições não derruba o lead: sem
+   * catálogo nada é gravado, e o resto do fluxo segue igual.
+   */
+  let leadCustomFields: Record<string, unknown> = {};
+  if (payload.custom_fields && Object.keys(payload.custom_fields).length > 0) {
+    const { data: defs, error: defsErr } = await supabase
+      .from("custom_field_definitions")
+      .select("key, type, options")
+      .eq("organization_id", source.organization_id)
+      .eq("entity_type", "contact");
+
+    if (defsErr) {
+      console.error("[webhook-in] falha ao ler campos personalizados:", defsErr.message);
+    } else {
+      leadCustomFields = sanitizeCustomFields(payload.custom_fields, (defs ?? []) as FieldDefinition[]);
+    }
+  }
+
   if (leadEmail || leadPhone) {
     const filters: string[] = [];
     if (leadEmail) filters.push(`email.eq.${leadEmail}`);
@@ -429,7 +462,7 @@ Deno.serve(async (req) => {
 
     const { data: existingContacts, error: findErr } = await supabase
       .from("contacts")
-      .select("id, name, email, phone, organization_id")
+      .select("id, name, email, phone, organization_id, custom_fields")
       .eq("organization_id", source.organization_id)
       .or(filters.join(","))
       .limit(1);
@@ -448,6 +481,20 @@ Deno.serve(async (req) => {
       if (clientCompanyId) updates.client_company_id = clientCompanyId;
       if (payload.notes) updates.notes = payload.notes;
       if (payload.source) updates.source = payload.source;
+
+      /*
+       * Campo personalizado é preenchido, nunca sobrescrito — a mesma regra do
+       * dono do card, e pelo mesmo motivo. Quem corrige o grau do vaginismo no
+       * card está corrigindo o que o formulário classificou; uma nova resposta
+       * não pode desfazer isso sem que ninguém veja.
+       */
+      const atuais = (existing.custom_fields ?? {}) as Record<string, unknown>;
+      const novos: Record<string, unknown> = {};
+      for (const [chave, valor] of Object.entries(leadCustomFields)) {
+        const jaTem = atuais[chave];
+        if (jaTem === undefined || jaTem === null || jaTem === "") novos[chave] = valor;
+      }
+      if (Object.keys(novos).length > 0) updates.custom_fields = { ...atuais, ...novos };
 
       if (Object.keys(updates).length > 0) {
         const { error: updErr } = await supabase
@@ -471,6 +518,7 @@ Deno.serve(async (req) => {
           company_name: companyName,
           client_company_id: clientCompanyId,
           notes: payload.notes || null,
+          custom_fields: leadCustomFields,
         })
         .select("id")
         .single();
@@ -625,6 +673,10 @@ Deno.serve(async (req) => {
     deal_id: dealId,
     // Por que o lead caiu onde caiu. Sem isto, depurar roteamento exige ler
     // log de Edge Function — e quem configurou a regra não tem esse acesso.
+    // O que entrou de campo personalizado, já validado contra o catálogo.
+    // Sem isto, descobrir que uma chave foi descartada exigiria ler log de
+    // Edge Function — e quem monta o formulário não tem esse acesso.
+    custom_fields: leadCustomFields,
     routing: {
       rule_id: appliedRule?.id ?? null,
       rule_name: appliedRule?.name ?? null,

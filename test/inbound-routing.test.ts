@@ -4,6 +4,8 @@ import {
   conditionMatches,
   findMatchingRule,
   getAttribution,
+  sanitizeCustomFields,
+  type FieldDefinition,
   type RoutingRule,
 } from '../supabase/functions/webhook-in/routing';
 
@@ -188,5 +190,79 @@ describe('findMatchingRule', () => {
   it('conditions nulo (vindo do banco) é tratado como pega-tudo, sem quebrar', () => {
     const rules = [rule({ id: 'nulo', conditions: null })];
     expect(findMatchingRule(rules, { utm_source: 'x' })?.id).toBe('nulo');
+  });
+});
+
+/**
+ * Campos personalizados que chegam junto do lead.
+ *
+ * A classificação é montada no formulário, num sistema que o CRM não controla.
+ * O catálogo da organização é o que decide o que vira dado: sem essa checagem,
+ * um formulário mal configurado inventaria opção nova num campo que a equipe
+ * usa para filtrar, e ninguém veria.
+ */
+describe('sanitizeCustomFields', () => {
+  const DEFS: FieldDefinition[] = [
+    { key: 'possui_vaginismo', type: 'boolean', options: null },
+    { key: 'grau_do_vaginismo', type: 'select', options: ['1', '2', '3', '4', '5'] },
+    { key: 'tipo_do_vaginismo', type: 'select', options: ['Primário', 'Secundário'] },
+    { key: 'observacao', type: 'text', options: null },
+  ];
+
+  it('aceita os três campos da classificação', () => {
+    expect(
+      sanitizeCustomFields(
+        { possui_vaginismo: 'SIM', grau_do_vaginismo: '4', tipo_do_vaginismo: 'Primário' },
+        DEFS,
+      ),
+    ).toEqual({
+      possui_vaginismo: 'true',
+      grau_do_vaginismo: '4',
+      tipo_do_vaginismo: 'Primário',
+    });
+  });
+
+  it('entende as duas formas de escrever sim e não', () => {
+    expect(sanitizeCustomFields({ possui_vaginismo: 'não' }, DEFS).possui_vaginismo).toBe('false');
+    expect(sanitizeCustomFields({ possui_vaginismo: 'nao' }, DEFS).possui_vaginismo).toBe('false');
+    expect(sanitizeCustomFields({ possui_vaginismo: 'true' }, DEFS).possui_vaginismo).toBe('true');
+    expect(sanitizeCustomFields({ possui_vaginismo: true }, DEFS).possui_vaginismo).toBe('true');
+  });
+
+  /*
+   * Gravar `false` por não entender o valor afirma que a pessoa não tem a
+   * condição. Vazio ao menos deixa claro que ninguém respondeu.
+   */
+  it('deixa o booleano vazio quando o valor não é sim nem não', () => {
+    expect(sanitizeCustomFields({ possui_vaginismo: 'talvez' }, DEFS)).toEqual({});
+  });
+
+  it('devolve a opção do catálogo, na grafia do catálogo', () => {
+    expect(sanitizeCustomFields({ tipo_do_vaginismo: 'primário' }, DEFS).tipo_do_vaginismo).toBe(
+      'Primário',
+    );
+    expect(sanitizeCustomFields({ tipo_do_vaginismo: '  SECUNDÁRIO ' }, DEFS).tipo_do_vaginismo).toBe(
+      'Secundário',
+    );
+  });
+
+  it('recusa valor que não está entre as opções', () => {
+    // "Inconclusivo" não existe no campo do CRM: entra vazio, não entra errado.
+    expect(sanitizeCustomFields({ grau_do_vaginismo: 'Inconclusivo' }, DEFS)).toEqual({});
+    expect(sanitizeCustomFields({ grau_do_vaginismo: '9' }, DEFS)).toEqual({});
+  });
+
+  it('ignora chave que não existe no catálogo', () => {
+    expect(sanitizeCustomFields({ chave_inventada: 'x', observacao: 'ok' }, DEFS)).toEqual({
+      observacao: 'ok',
+    });
+  });
+
+  it('ignora vazio, nulo e entrada que não é objeto', () => {
+    expect(sanitizeCustomFields({ observacao: '   ' }, DEFS)).toEqual({});
+    expect(sanitizeCustomFields({ observacao: null }, DEFS)).toEqual({});
+    expect(sanitizeCustomFields(null, DEFS)).toEqual({});
+    expect(sanitizeCustomFields(['a'], DEFS)).toEqual({});
+    expect(sanitizeCustomFields({ observacao: 'ok' }, [])).toEqual({});
   });
 });

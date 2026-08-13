@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 
 import { DealDetailModal } from './DealDetailModal';
 
@@ -229,8 +229,13 @@ describe('DealDetailModal', () => {
     expect(document.body.textContent).toContain('Notas do Contato');
     expect(document.body.textContent).toContain('Prefere contato à tarde');
 
+    /*
+     * O campo personalizado é editável dentro do card, então o valor está no
+     * controle e não no texto da página. A asserção segue o que a pessoa vê:
+     * o rótulo, e o valor já preenchido no campo daquele rótulo.
+     */
     expect(document.body.textContent).toContain('Origem da Campanha');
-    expect(document.body.textContent).toContain('Youtube');
+    expect(screen.getByLabelText('Origem da Campanha')).toHaveValue('Youtube');
 
     // Telefone espelhado habilita o atalho de WhatsApp no card.
     expect(document.body.textContent).toContain('+5511999999999');

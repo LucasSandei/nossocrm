@@ -43,6 +43,79 @@ export type RuleCondition = {
   value?: string;
 };
 
+/** Uma linha de `custom_field_definitions`, o catálogo de campos da organização. */
+export type FieldDefinition = { key: string; type: string; options: string[] | null };
+
+/**
+ * Converte os campos personalizados recebidos para o formato do CRM.
+ *
+ * O vocabulário é do CRM, não de quem envia: chave sem definição não entra, e
+ * valor fora das opções de um `select` também não. Um formulário que classifica
+ * errado não pode inventar opção nova num campo que a equipe usa para filtrar.
+ *
+ * Chave desconhecida é descartada em silêncio de propósito. Recusar o lead
+ * inteiro por causa de um campo de enriquecimento trocaria um dado ausente por
+ * um lead perdido.
+ *
+ * O valor sai sempre como texto, espelhando `toStoredCustomFieldValue` em
+ * `lib/utils/customFields.ts`: `contacts.custom_fields` guarda string em todos
+ * os tipos, e booleano nativo aqui apareceria vazio no card, que lê `'true'`.
+ * Os dois arquivos não podem compartilhar código — um roda em Deno, o outro no
+ * Next — então o que os mantém juntos é este comentário e o teste.
+ */
+export function sanitizeCustomFields(
+  input: unknown,
+  definitions: FieldDefinition[],
+): Record<string, string> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+
+  const porChave = new Map(definitions.map((d) => [d.key, d]));
+  const out: Record<string, string> = {};
+
+  for (const [chave, bruto] of Object.entries(input as Record<string, unknown>)) {
+    const def = porChave.get(chave);
+    if (!def || bruto === null || bruto === undefined) continue;
+
+    const texto = String(bruto).trim();
+    if (!texto) continue;
+
+    if (def.type === "boolean") {
+      const t = texto.toLowerCase();
+      // Valor que não é claramente um nem outro fica de fora: gravar `false`
+      // por engano afirma que a pessoa não tem a condição, o que é pior que
+      // deixar o campo vazio para alguém preencher.
+      if (["true", "1", "sim", "yes", "y", "s"].includes(t)) out[chave] = "true";
+      else if (["false", "0", "nao", "não", "no", "n"].includes(t)) out[chave] = "false";
+      continue;
+    }
+
+    if (def.type === "select") {
+      const opcao = (def.options ?? []).find((o) => sameText(o, texto));
+      if (opcao) out[chave] = opcao;
+      continue;
+    }
+
+    if (def.type === "number" || def.type === "currency") {
+      const n = Number(texto.replace(",", "."));
+      if (Number.isFinite(n)) out[chave] = String(n);
+      continue;
+    }
+
+    if (def.type === "date") {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) out[chave] = texto;
+      else {
+        const d = new Date(texto);
+        if (!Number.isNaN(d.getTime())) out[chave] = d.toISOString().slice(0, 10);
+      }
+      continue;
+    }
+
+    out[chave] = texto;
+  }
+
+  return out;
+}
+
 export type RoutingRule = {
   id: string;
   name: string;

@@ -63,7 +63,7 @@ import { ContactTasksPanel } from '@/features/activities/components/ContactTasks
 import { ContactFormsPanel } from '@/features/forms/components/ContactFormsPanel';
 import { isTimelineActivity } from '@/lib/utils/activityKind';
 import { formatPriorityPtBr } from '@/lib/utils/priority';
-import { formatCustomFieldValue } from '@/lib/utils/customFields';
+import { ContactCustomFieldsEditor } from './ContactCustomFieldsEditor';
 import { toWhatsAppPhone } from '@/lib/phone';
 import { BriefingDrawer } from '@/features/deals/components/BriefingDrawer';
 import { AIExtractedFields } from '@/features/deals/components/AIExtractedFields';
@@ -829,16 +829,18 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                     {contactCustomFieldDefinitions.length > 0 && (
                       <div>
                         <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Campos Personalizados do Contato</h3>
-                        <div className="space-y-1.5">
-                          {contactCustomFieldDefinitions.map(field => (
-                            <div key={field.id} className="flex justify-between text-sm gap-2">
-                              <span className="text-slate-500 flex-shrink-0">{field.label}</span>
-                              <span className="text-slate-900 dark:text-white text-right truncate">
-                                {formatCustomFieldValue(contact.customFields?.[field.key], field.type) || '—'}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
+                        {/*
+                          Editáveis daqui: o formulário classifica pelas respostas,
+                          e quem conversa com a pessoa descobre o que ele não capta.
+                          Grava no contato, o mesmo campo da aba Contatos.
+                        */}
+                        <ContactCustomFieldsEditor
+                          definitions={contactCustomFieldDefinitions}
+                          values={contact.customFields}
+                          onChange={(next) =>
+                            updateContact({ id: contact.id, updates: { customFields: next } })
+                          }
+                        />
                       </div>
                     )}
                   </div>
