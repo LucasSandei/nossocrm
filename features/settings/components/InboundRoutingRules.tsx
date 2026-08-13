@@ -46,13 +46,16 @@ const FIELDS: { value: string; label: string; hint?: string; placeholder?: strin
   {
     value: 'link_id',
     label: 'Link de campanha',
-    hint: 'O identificador do link no LS Forms — copie em LS Forms › Compartilhar › link da vendedora. É o jeito exato de separar quem divulgou.',
+    hint: 'É este que separa vendedoras. Copie com o botão ID em LS Forms › Compartilhar, no link de cada uma.',
     placeholder: 'c0ffee00-0000-4000-8000-000000000001',
   },
   {
     value: 'form_id',
     label: 'Formulário',
-    hint: 'O id do formulário no LS Forms. Útil quando uma fonte recebe vários formulários.',
+    // Os dois campos aceitam um UUID e nada na tela distingue um do outro. Colar
+    // o id de um link aqui cria uma regra que nunca casa, e a regra oposta vira
+    // pega-tudo sem aviso: todo lead vai para o mesmo lugar.
+    hint: 'Atenção: é o id do formulário inteiro, não o de um link. Para separar vendedoras, use Link de campanha.',
     placeholder: 'id do formulário',
   },
   { value: 'utm_source', label: 'utm_source', hint: 'Origem: instagram, google, whatsapp… A comparação ignora maiúsculas.', placeholder: 'instagram' },

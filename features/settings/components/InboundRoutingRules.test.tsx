@@ -68,6 +68,21 @@ describe('editor de regra de entrada', () => {
     expect(valorUtm).toHaveAttribute('placeholder', 'instagram');
   });
 
+  /*
+   * "Formulário" e "Link de campanha" aceitam um UUID cada, e nada na tela
+   * distingue os dois valores. Colar o id de um link em "Formulário" produziu
+   * uma regra que nunca casava e outra que virava pega-tudo, mandando todo
+   * lead para o mesmo funil. O aviso é o que resta para separá-los.
+   */
+  it('avisa que o campo Formulário não recebe id de link', async () => {
+    const user = await abrirEditor();
+
+    await user.selectOptions(screen.getByRole('combobox', { name: /campo de origem/i }), 'form_id');
+
+    expect(screen.getByText(/não o de um link/i)).toBeInTheDocument();
+    expect(screen.getByText(/use link de campanha/i)).toBeInTheDocument();
+  });
+
   it('troca o campo de valor por uma explicação quando o operador dispensa valor', async () => {
     const user = await abrirEditor();
 
