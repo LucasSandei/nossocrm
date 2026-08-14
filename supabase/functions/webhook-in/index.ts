@@ -33,6 +33,7 @@ import {
   findMatchingRule,
   getAttribution,
   sameText,
+  camposParaPreencher,
   sanitizeCustomFields,
   type Attribution,
   type FieldDefinition,
@@ -349,6 +350,53 @@ Deno.serve(async (req) => {
     attribution: Object.keys(attribution).length > 0 ? attribution : null,
   };
 
+  /*
+   * Campos personalizados do contato, validados contra o catálogo da própria
+   * organização. Falha na leitura das definições não derruba o lead: sem
+   * catálogo nada é gravado, e o resto do fluxo segue igual.
+   *
+   * Calculado antes da guarda de duplicata porque a entrega que traz a
+   * classificação costuma ser a segunda — ver o comentário lá embaixo.
+   */
+  let leadCustomFields: Record<string, string> = {};
+  if (payload.custom_fields && Object.keys(payload.custom_fields).length > 0) {
+    const { data: defs, error: defsErr } = await supabase
+      .from("custom_field_definitions")
+      .select("key, type, options")
+      .eq("organization_id", source.organization_id)
+      .eq("entity_type", "contact");
+
+    if (defsErr) {
+      console.error("[webhook-in] falha ao ler campos personalizados:", defsErr.message);
+    } else {
+      leadCustomFields = sanitizeCustomFields(payload.custom_fields, (defs ?? []) as FieldDefinition[]);
+    }
+  }
+
+  /**
+   * Preenche campo vazio do contato, sem nunca sobrescrever.
+   *
+   * Mesma regra do dono do card: quem corrige o grau na conversa não pode ser
+   * desfeito por uma nova resposta do formulário.
+   */
+  async function preencherCamposDoContato(alvoId: string) {
+    if (!alvoId || Object.keys(leadCustomFields).length === 0) return;
+
+    const { data: alvo } = await supabase
+      .from("contacts")
+      .select("custom_fields")
+      .eq("id", alvoId)
+      .maybeSingle();
+
+    const mesclado = camposParaPreencher(
+      (alvo?.custom_fields ?? {}) as Record<string, unknown>,
+      leadCustomFields,
+    );
+    if (!mesclado) return;
+
+    await supabase.from("contacts").update({ custom_fields: mesclado }).eq("id", alvoId);
+  }
+
   // 1) Auditoria/dedupe (idempotente quando external_event_id existe)
   if (externalEventId) {
     const { error: insertEventErr } = await supabase
@@ -377,6 +425,22 @@ Deno.serve(async (req) => {
         .maybeSingle();
 
       if (!existingEventErr && existingEvent?.created_deal_id) {
+        /*
+         * Mesmo evento, entrega mais rica.
+         *
+         * O LS Forms usa o id da resposta como `external_event_id` nas duas
+         * entregas: a parcial, disparada assim que há nome e telefone, e a
+         * final. A parcial chega antes das perguntas de classificação, então
+         * a segunda é a única que traz o resultado.
+         *
+         * Antes esta guarda devolvia cedo e o enriquecimento se perdia: o card
+         * nascia com os campos vazios e nunca mais era completado. Duplicar
+         * negócio continua barrado, que é o que a guarda existe para impedir.
+         */
+        if (existingEvent.created_contact_id) {
+          await preencherCamposDoContato(existingEvent.created_contact_id as string);
+        }
+
         return json(200, {
           ok: true,
           duplicate: true,
@@ -384,6 +448,7 @@ Deno.serve(async (req) => {
           organization_id: source.organization_id,
           contact_id: existingEvent.created_contact_id ?? null,
           deal_id: existingEvent.created_deal_id,
+          custom_fields: leadCustomFields,
           status: existingEvent.status ?? "processed",
         });
       }
@@ -435,26 +500,6 @@ Deno.serve(async (req) => {
     }
   }
 
-  /*
-   * Campos personalizados do contato, validados contra o catálogo da própria
-   * organização. Falha na leitura das definições não derruba o lead: sem
-   * catálogo nada é gravado, e o resto do fluxo segue igual.
-   */
-  let leadCustomFields: Record<string, unknown> = {};
-  if (payload.custom_fields && Object.keys(payload.custom_fields).length > 0) {
-    const { data: defs, error: defsErr } = await supabase
-      .from("custom_field_definitions")
-      .select("key, type, options")
-      .eq("organization_id", source.organization_id)
-      .eq("entity_type", "contact");
-
-    if (defsErr) {
-      console.error("[webhook-in] falha ao ler campos personalizados:", defsErr.message);
-    } else {
-      leadCustomFields = sanitizeCustomFields(payload.custom_fields, (defs ?? []) as FieldDefinition[]);
-    }
-  }
-
   if (leadEmail || leadPhone) {
     const filters: string[] = [];
     if (leadEmail) filters.push(`email.eq.${leadEmail}`);
@@ -482,19 +527,13 @@ Deno.serve(async (req) => {
       if (payload.notes) updates.notes = payload.notes;
       if (payload.source) updates.source = payload.source;
 
-      /*
-       * Campo personalizado é preenchido, nunca sobrescrito — a mesma regra do
-       * dono do card, e pelo mesmo motivo. Quem corrige o grau do vaginismo no
-       * card está corrigindo o que o formulário classificou; uma nova resposta
-       * não pode desfazer isso sem que ninguém veja.
-       */
-      const atuais = (existing.custom_fields ?? {}) as Record<string, unknown>;
-      const novos: Record<string, unknown> = {};
-      for (const [chave, valor] of Object.entries(leadCustomFields)) {
-        const jaTem = atuais[chave];
-        if (jaTem === undefined || jaTem === null || jaTem === "") novos[chave] = valor;
-      }
-      if (Object.keys(novos).length > 0) updates.custom_fields = { ...atuais, ...novos };
+      // Preenche, nunca sobrescreve. A mesma regra vale no caminho da entrega
+      // duplicada, em `preencherCamposDoContato`.
+      const mescladoExistente = camposParaPreencher(
+        (existing.custom_fields ?? {}) as Record<string, unknown>,
+        leadCustomFields,
+      );
+      if (mescladoExistente) updates.custom_fields = mescladoExistente;
 
       if (Object.keys(updates).length > 0) {
         const { error: updErr } = await supabase

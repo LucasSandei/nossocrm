@@ -116,6 +116,35 @@ export function sanitizeCustomFields(
   return out;
 }
 
+/**
+ * O que ainda cabe gravar num contato que já existe.
+ *
+ * Campo personalizado é preenchido, nunca sobrescrito, pela mesma razão do dono
+ * do card: quem corrige o grau durante a conversa está corrigindo o que o
+ * formulário classificou, e uma nova resposta não pode desfazer isso sem que
+ * ninguém veja.
+ *
+ * Vazio conta como não preenchido. Um `select` que a pessoa limpou no card fica
+ * como string vazia, e deixá-lo assim para sempre transformaria uma limpeza
+ * acidental em dado perdido.
+ *
+ * @returns Só o que mudou, ou `null` quando não há nada a gravar. Devolver a
+ *   decisão em vez de gravar aqui dentro mantém a regra testável sem banco.
+ */
+export function camposParaPreencher(
+  atuais: Record<string, unknown>,
+  recebidos: Record<string, string>,
+): Record<string, unknown> | null {
+  const novos: Record<string, unknown> = {};
+
+  for (const [chave, valor] of Object.entries(recebidos)) {
+    const jaTem = atuais[chave];
+    if (jaTem === undefined || jaTem === null || jaTem === "") novos[chave] = valor;
+  }
+
+  return Object.keys(novos).length > 0 ? { ...atuais, ...novos } : null;
+}
+
 export type RoutingRule = {
   id: string;
   name: string;

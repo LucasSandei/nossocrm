@@ -4,6 +4,7 @@ import {
   conditionMatches,
   findMatchingRule,
   getAttribution,
+  camposParaPreencher,
   sanitizeCustomFields,
   type FieldDefinition,
   type RoutingRule,
@@ -264,5 +265,54 @@ describe('sanitizeCustomFields', () => {
     expect(sanitizeCustomFields(null, DEFS)).toEqual({});
     expect(sanitizeCustomFields(['a'], DEFS)).toEqual({});
     expect(sanitizeCustomFields({ observacao: 'ok' }, [])).toEqual({});
+  });
+});
+
+/**
+ * Preenchimento dos campos personalizados de um contato que já existe.
+ *
+ * O LS Forms entrega duas vezes com o mesmo `external_event_id`: a parcial,
+ * assim que há nome e telefone, e a final. A parcial chega antes das perguntas
+ * de classificação, então a segunda é a única que traz o resultado — e é ela
+ * que precisa completar o card sem desfazer correção feita à mão.
+ */
+describe('camposParaPreencher', () => {
+  it('preenche o que está vazio', () => {
+    expect(camposParaPreencher({}, { grau_do_vaginismo: '4' })).toEqual({
+      grau_do_vaginismo: '4',
+    });
+  });
+
+  /*
+   * A regra que existe por causa da conversa: a vendedora corrige o grau no
+   * card, e uma nova resposta do mesmo formulário não pode reverter isso.
+   */
+  it('nunca sobrescreve valor que alguém já colocou', () => {
+    expect(camposParaPreencher({ grau_do_vaginismo: '2' }, { grau_do_vaginismo: '4' })).toBeNull();
+  });
+
+  it('completa só a chave que falta, mantendo as outras', () => {
+    expect(
+      camposParaPreencher(
+        { possui_vaginismo: 'true' },
+        { possui_vaginismo: 'false', grau_do_vaginismo: '3' },
+      ),
+    ).toEqual({ possui_vaginismo: 'true', grau_do_vaginismo: '3' });
+  });
+
+  // Select limpo no card fica como string vazia. Tratar isso como "preenchido"
+  // transformaria uma limpeza acidental em dado perdido para sempre.
+  it('trata vazio e nulo como não preenchido', () => {
+    expect(camposParaPreencher({ grau_do_vaginismo: '' }, { grau_do_vaginismo: '5' })).toEqual({
+      grau_do_vaginismo: '5',
+    });
+    expect(camposParaPreencher({ tipo_do_vaginismo: null }, { tipo_do_vaginismo: 'Primário' })).toEqual(
+      { tipo_do_vaginismo: 'Primário' },
+    );
+  });
+
+  it('devolve nulo quando não há nada a gravar, para evitar update à toa', () => {
+    expect(camposParaPreencher({ a: '1' }, {})).toBeNull();
+    expect(camposParaPreencher({}, {})).toBeNull();
   });
 });
