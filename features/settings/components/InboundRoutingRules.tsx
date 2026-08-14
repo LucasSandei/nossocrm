@@ -6,6 +6,7 @@ import { ConfirmDialog as ConfirmModal } from '@/components/ui/confirm-dialog';
 import { useBoards } from '@/lib/query/hooks/useBoardsQuery';
 import { useTags } from '@/lib/query/hooks/useTagsQuery';
 import { useOrgMembersQuery } from '@/lib/query/hooks/useOrgMembersQuery';
+import { useContactCustomFieldDefinitions } from '@/lib/query/hooks/useContactCustomFieldsQuery';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
@@ -78,16 +79,27 @@ const OPERATORS: { value: string; label: string }[] = [
 
 const EMPTY_CONDITION: ConditionRow = { field: 'link_id', operator: 'equals', value: '' };
 
-function fieldLabel(field: string) {
-  return FIELDS.find((f) => f.value === field)?.label ?? field;
+/**
+ * Prefixo que distingue campo personalizado de campo de origem.
+ *
+ * Espelha `CAMPO_PERSONALIZADO` em `supabase/functions/webhook-in/routing.ts`,
+ * que é quem avalia a condição do outro lado. Sem ele, um campo personalizado
+ * chamado `source` disputaria nome com a origem declarada.
+ */
+const CAMPO_PERSONALIZADO = 'cf:';
+
+type OpcaoDeCampo = { value: string; label: string; hint?: string; placeholder?: string };
+
+function fieldLabel(field: string, opcoes: OpcaoDeCampo[]) {
+  return opcoes.find((f) => f.value === field)?.label ?? field;
 }
 
-function fieldHint(field: string) {
-  return FIELDS.find((f) => f.value === field)?.hint;
+function fieldHint(field: string, opcoes: OpcaoDeCampo[]) {
+  return opcoes.find((f) => f.value === field)?.hint;
 }
 
-function fieldPlaceholder(field: string) {
-  return FIELDS.find((f) => f.value === field)?.placeholder ?? 'valor';
+function fieldPlaceholder(field: string, opcoes: OpcaoDeCampo[]) {
+  return opcoes.find((f) => f.value === field)?.placeholder ?? 'valor';
 }
 
 function operatorLabel(operator: string) {
@@ -111,6 +123,27 @@ export const InboundRoutingRules: React.FC<InboundRoutingRulesProps> = ({
   const { data: boards = [] } = useBoards();
   const { data: tags = [] } = useTags();
   const { data: members = [] } = useOrgMembersQuery();
+  const { data: camposDoContato = [] } = useContactCustomFieldDefinitions();
+
+  /*
+   * Origem e classificação no mesmo seletor.
+   *
+   * Separar uma lead pronta para comprar exige olhar o que o formulário
+   * classificou, não só de onde ela veio. Os campos do catálogo entram com
+   * prefixo para não disputarem nome com os de atribuição.
+   */
+  const opcoesDeCampo = useMemo<OpcaoDeCampo[]>(
+    () => [
+      ...FIELDS,
+      ...camposDoContato.map((d) => ({
+        value: CAMPO_PERSONALIZADO + d.key,
+        label: d.label + ' (classificação)',
+        hint: 'Campo personalizado do contato, preenchido pela lógica do formulário.',
+        placeholder: d.options?.[0] ?? 'valor',
+      })),
+    ],
+    [camposDoContato],
+  );
 
   const [rules, setRules] = useState<RuleRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -214,7 +247,7 @@ export const InboundRoutingRules: React.FC<InboundRoutingRulesProps> = ({
 
     const incomplete = cleaned.find((c) => c.operator !== 'exists' && !c.value);
     if (incomplete) {
-      addToast(`Preencha o valor de "${fieldLabel(incomplete.field)}".`, 'error');
+      addToast(`Preencha o valor de "${fieldLabel(incomplete.field, opcoesDeCampo)}".`, 'error');
       return;
     }
 
@@ -366,7 +399,7 @@ export const InboundRoutingRules: React.FC<InboundRoutingRulesProps> = ({
                             </span>
                           )}
                           <span className="font-medium text-slate-600 dark:text-slate-300">
-                            {fieldLabel(c.field)}
+                            {fieldLabel(c.field, opcoesDeCampo)}
                           </span>{' '}
                           {operatorLabel(c.operator)}
                           {c.operator !== 'exists' && (
@@ -470,7 +503,7 @@ export const InboundRoutingRules: React.FC<InboundRoutingRulesProps> = ({
             */}
             <div className="space-y-3">
               {conditions.map((condition, index) => {
-                const hint = fieldHint(condition.field);
+                const hint = fieldHint(condition.field, opcoesDeCampo);
                 return (
                   <div
                     key={index}
@@ -487,7 +520,7 @@ export const InboundRoutingRules: React.FC<InboundRoutingRulesProps> = ({
                           setConditions(next);
                         }}
                       >
-                        {FIELDS.map((f) => (
+                        {opcoesDeCampo.map((f) => (
                           <option key={f.value} value={f.value}>
                             {f.label}
                           </option>
@@ -517,7 +550,7 @@ export const InboundRoutingRules: React.FC<InboundRoutingRulesProps> = ({
                         </p>
                       ) : (
                         <input
-                          aria-label={`Valor de ${fieldLabel(condition.field)}`}
+                          aria-label={`Valor de ${fieldLabel(condition.field, opcoesDeCampo)}`}
                           className={inputClass}
                           value={condition.value}
                           onChange={(e) => {
@@ -525,7 +558,7 @@ export const InboundRoutingRules: React.FC<InboundRoutingRulesProps> = ({
                             next[index] = { ...next[index], value: e.target.value };
                             setConditions(next);
                           }}
-                          placeholder={fieldPlaceholder(condition.field)}
+                          placeholder={fieldPlaceholder(condition.field, opcoesDeCampo)}
                         />
                       )}
 

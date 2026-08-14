@@ -316,3 +316,64 @@ describe('camposParaPreencher', () => {
     expect(camposParaPreencher({}, {})).toBeNull();
   });
 });
+
+/**
+ * Roteamento por classificação, não só por origem.
+ *
+ * Mandar uma lead pronta para comprar a um funil próprio exige olhar o que o
+ * formulário classificou. O prefixo `cf:` é o que separa esse mundo do da
+ * atribuição, para um campo personalizado chamado `source` não disputar nome
+ * com a origem declarada.
+ */
+describe('condições sobre campos personalizados', () => {
+  const CAMPOS = { possui_vaginismo: 'true', lead_prioritaria: 'Sim' };
+
+  it('compara o valor do campo personalizado', () => {
+    expect(
+      conditionMatches({ field: 'cf:lead_prioritaria', operator: 'equals', value: 'Sim' }, {}, CAMPOS),
+    ).toBe(true);
+    expect(
+      conditionMatches({ field: 'cf:lead_prioritaria', operator: 'equals', value: 'Não' }, {}, CAMPOS),
+    ).toBe(false);
+  });
+
+  it('campo do catálogo que não veio no lead não casa em equals', () => {
+    expect(
+      conditionMatches({ field: 'cf:grau_do_vaginismo', operator: 'equals', value: '5' }, {}, CAMPOS),
+    ).toBe(false);
+  });
+
+  it('exists funciona sobre campo personalizado', () => {
+    expect(conditionMatches({ field: 'cf:possui_vaginismo', operator: 'exists' }, {}, CAMPOS)).toBe(true);
+    expect(conditionMatches({ field: 'cf:nao_existe', operator: 'exists' }, {}, CAMPOS)).toBe(false);
+  });
+
+  // Sem o prefixo, um campo chamado `source` seria lido da atribuição.
+  it('o prefixo separa os dois mundos', () => {
+    const attribution = { source: 'Instagram' };
+    const campos = { source: 'Formulário' };
+    expect(conditionMatches({ field: 'source', operator: 'equals', value: 'Instagram' }, attribution, campos)).toBe(true);
+    expect(conditionMatches({ field: 'cf:source', operator: 'equals', value: 'Formulário' }, attribution, campos)).toBe(true);
+  });
+
+  it('regra combina origem e classificação na mesma condição', () => {
+    const regras = [
+      rule({
+        id: 'pronta-para-comprar',
+        priority: 5,
+        match_type: 'all',
+        conditions: [
+          { field: 'cf:possui_vaginismo', operator: 'equals', value: 'true' },
+          { field: 'cf:lead_prioritaria', operator: 'equals', value: 'Sim' },
+        ],
+        board_id: 'board-acompanhamento',
+      }),
+      rule({ id: 'resto', priority: 10, conditions: [] }),
+    ];
+
+    expect(findMatchingRule(regras, {}, CAMPOS)?.id).toBe('pronta-para-comprar');
+    // Sem a classificação, cai na genérica em vez de forçar o funil de vendas.
+    expect(findMatchingRule(regras, {}, { possui_vaginismo: 'true' })?.id).toBe('resto');
+    expect(findMatchingRule(regras, {})?.id).toBe('resto');
+  });
+});

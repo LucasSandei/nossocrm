@@ -37,6 +37,16 @@ vi.mock('@/lib/query/hooks/useOrgMembersQuery', () => ({
   useOrgMembersQuery: () => ({ data: [{ id: 'member-1', name: 'Jéssica' }] }),
 }));
 
+// Campos do catálogo entram no mesmo seletor das condições, com prefixo `cf:`.
+vi.mock('@/lib/query/hooks/useContactCustomFieldsQuery', () => ({
+  useContactCustomFieldDefinitions: () => ({
+    data: [
+      { id: 'cf-1', key: 'possui_vaginismo', label: 'Possui vaginismo', type: 'boolean', options: null },
+      { id: 'cf-2', key: 'grau_do_vaginismo', label: 'Grau do Vaginismo', type: 'select', options: ['1', '2'] },
+    ],
+  }),
+}));
+
 // Sem fonte de dados as regras carregam vazias, que é o estado de "criar a primeira".
 vi.mock('@/lib/supabase/client', () => ({ supabase: null }));
 
@@ -108,5 +118,35 @@ describe('editor de regra de entrada', () => {
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByRole('button', { name: /criar regra/i })).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: /cancelar/i })).toBeInTheDocument();
+  });
+});
+
+/**
+ * Classificação como critério de roteamento.
+ *
+ * Separar uma lead pronta para comprar exige olhar o que o formulário
+ * classificou, não só de onde ela veio. Sem os campos do catálogo no seletor,
+ * essa regra teria de ser escrita direto no banco.
+ */
+describe('campos personalizados no seletor de condição', () => {
+  it('oferece os campos do catálogo junto dos de origem', async () => {
+    await abrirEditor();
+
+    const campo = screen.getByRole('combobox', { name: /campo de origem/i });
+    expect(within(campo).getByRole('option', { name: /link de campanha/i })).toBeInTheDocument();
+    expect(within(campo).getByRole('option', { name: /possui vaginismo/i })).toBeInTheDocument();
+    expect(within(campo).getByRole('option', { name: /grau do vaginismo/i })).toBeInTheDocument();
+  });
+
+  // O prefixo é o que impede um campo chamado `source` de disputar nome com a
+  // origem declarada.
+  it('grava o campo do catálogo com o prefixo que o motor entende', async () => {
+    const user = await abrirEditor();
+
+    const campo = screen.getByRole('combobox', { name: /campo de origem/i });
+    await user.selectOptions(campo, 'cf:possui_vaginismo');
+
+    expect((campo as HTMLSelectElement).value).toBe('cf:possui_vaginismo');
+    expect(screen.getByRole('textbox', { name: /valor de possui vaginismo/i })).toBeInTheDocument();
   });
 });

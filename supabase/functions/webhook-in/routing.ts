@@ -193,11 +193,27 @@ export function sameText(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
-export function conditionMatches(condition: RuleCondition, attribution: Attribution): boolean {
+/**
+ * Prefixo que distingue campo personalizado de campo de origem numa condição.
+ *
+ * `utm_source` é atribuição; `cf:possui_vaginismo` é classificação. Sem o
+ * prefixo, um campo personalizado chamado `source` disputaria nome com a
+ * origem declarada, e a regra passaria a depender de qual dos dois o motor
+ * olhasse primeiro.
+ */
+export const CAMPO_PERSONALIZADO = "cf:";
+
+export function conditionMatches(
+  condition: RuleCondition,
+  attribution: Attribution,
+  customFields: Record<string, string> = {},
+): boolean {
   const field = toNullableString(condition.field);
   if (!field) return false;
 
-  const actual = toNullableString((attribution as Record<string, unknown>)[field]);
+  const actual = field.startsWith(CAMPO_PERSONALIZADO)
+    ? toNullableString(customFields[field.slice(CAMPO_PERSONALIZADO.length)])
+    : toNullableString((attribution as Record<string, unknown>)[field]);
   const expected = toNullableString(condition.value);
   const operator = (toNullableString(condition.operator) ?? "equals").toLowerCase();
 
@@ -235,14 +251,15 @@ export function conditionMatches(condition: RuleCondition, attribution: Attribut
 export function findMatchingRule(
   rules: RoutingRule[],
   attribution: Attribution,
+  customFields: Record<string, string> = {},
 ): RoutingRule | null {
   for (const rule of rules) {
     const conditions = Array.isArray(rule.conditions) ? rule.conditions : [];
     if (conditions.length === 0) return rule;
 
     const matched = rule.match_type === "any"
-      ? conditions.some((c) => conditionMatches(c, attribution))
-      : conditions.every((c) => conditionMatches(c, attribution));
+      ? conditions.some((c) => conditionMatches(c, attribution, customFields))
+      : conditions.every((c) => conditionMatches(c, attribution, customFields));
 
     if (matched) return rule;
   }

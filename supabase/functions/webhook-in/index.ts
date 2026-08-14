@@ -263,6 +263,31 @@ Deno.serve(async (req) => {
   const attribution = getAttribution(payload);
   if (!attribution.source && payload.source) attribution.source = payload.source;
 
+  /*
+   * Campos personalizados do contato, validados contra o catálogo da própria
+   * organização. Falha na leitura das definições não derruba o lead: sem
+   * catálogo nada é gravado, e o resto do fluxo segue igual.
+   *
+   * Ficam antes do roteamento porque as regras também os avaliam: separar uma
+   * lead pronta para comprar exige olhar a classificação, não só de onde ela
+   * veio. E antes da guarda de duplicata porque a entrega que traz a
+   * classificação costuma ser a segunda.
+   */
+  let leadCustomFields: Record<string, string> = {};
+  if (payload.custom_fields && Object.keys(payload.custom_fields).length > 0) {
+    const { data: defs, error: defsErr } = await supabase
+      .from("custom_field_definitions")
+      .select("key, type, options")
+      .eq("organization_id", source.organization_id)
+      .eq("entity_type", "contact");
+
+    if (defsErr) {
+      console.error("[webhook-in] falha ao ler campos personalizados:", defsErr.message);
+    } else {
+      leadCustomFields = sanitizeCustomFields(payload.custom_fields, (defs ?? []) as FieldDefinition[]);
+    }
+  }
+
   let appliedRule: RoutingRule | null = null;
   let targetBoardId: string = source.entry_board_id;
   let targetStageId: string = source.entry_stage_id;
@@ -284,7 +309,7 @@ Deno.serve(async (req) => {
     if (rulesErr) {
       console.error("[webhook-in] falha ao carregar regras, usando destino padrão:", rulesErr.message);
     } else {
-      appliedRule = findMatchingRule((rules ?? []) as RoutingRule[], attribution);
+      appliedRule = findMatchingRule((rules ?? []) as RoutingRule[], attribution, leadCustomFields);
     }
   }
 
@@ -354,24 +379,7 @@ Deno.serve(async (req) => {
    * Campos personalizados do contato, validados contra o catálogo da própria
    * organização. Falha na leitura das definições não derruba o lead: sem
    * catálogo nada é gravado, e o resto do fluxo segue igual.
-   *
-   * Calculado antes da guarda de duplicata porque a entrega que traz a
-   * classificação costuma ser a segunda — ver o comentário lá embaixo.
    */
-  let leadCustomFields: Record<string, string> = {};
-  if (payload.custom_fields && Object.keys(payload.custom_fields).length > 0) {
-    const { data: defs, error: defsErr } = await supabase
-      .from("custom_field_definitions")
-      .select("key, type, options")
-      .eq("organization_id", source.organization_id)
-      .eq("entity_type", "contact");
-
-    if (defsErr) {
-      console.error("[webhook-in] falha ao ler campos personalizados:", defsErr.message);
-    } else {
-      leadCustomFields = sanitizeCustomFields(payload.custom_fields, (defs ?? []) as FieldDefinition[]);
-    }
-  }
 
   /**
    * Preenche campo vazio do contato, sem nunca sobrescrever.
