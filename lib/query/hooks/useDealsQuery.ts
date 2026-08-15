@@ -369,6 +369,27 @@ export const useBulkCreateDeals = () => {
 };
 
 /**
+ * Move os negócios em aberto de vários contatos para outro funil ou coluna.
+ *
+ * Invalida a mesma chave do Kanban: o card precisa sumir da coluna antiga e
+ * aparecer na nova sem recarregar a página.
+ */
+export const useBulkMoveDealsByContacts = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: Parameters<typeof dealsService.moveManyByContacts>[0]) => {
+      return dealsService.moveManyByContacts(input);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: DEALS_VIEW_KEY });
+      queryClient.invalidateQueries({ queryKey: queryKeys.deals.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.stats });
+    },
+  });
+};
+
+/**
  * Hook to update a deal
  * Usa DEALS_VIEW_KEY como única fonte de verdade
  */

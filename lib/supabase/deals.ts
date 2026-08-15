@@ -596,6 +596,91 @@ export const dealsService = {
     }
   },
 
+  /**
+   * Move os negócios em aberto de vários contatos para um funil e coluna.
+   *
+   * Diferente de `createMany`, que cadastra quem ainda não tem negócio: aqui o
+   * negócio já existe e muda de lugar. São operações distintas de propósito —
+   * "cadastrar em board" duplicaria o card de quem já está no funil, e "mover"
+   * não deveria inventar card para quem nunca entrou.
+   *
+   * Ganho e perdido ficam de fora. Já tiveram desfecho, e arrastá-los de volta
+   * para uma coluna aberta apagaria o resultado que alguém registrou.
+   *
+   * @returns Quantos moveram, quantos já estavam no destino e quantos contatos
+   *   não tinham negócio aberto para mover.
+   */
+  async moveManyByContacts(input: {
+    boardId: string;
+    stageId: string;
+    contactIds: string[];
+  }): Promise<{
+    movedCount: number;
+    alreadyThereCount: number;
+    withoutDealCount: number;
+    error: Error | null;
+  }> {
+    const vazio = { movedCount: 0, alreadyThereCount: 0, withoutDealCount: 0 };
+    try {
+      if (!supabase) return { ...vazio, error: new Error('Supabase não configurado') };
+
+      const boardId = requireUUID(input.boardId, 'Board ID');
+      const stageId = sanitizeUUID(input.stageId);
+      if (!stageId) return { ...vazio, error: new Error('Estágio inválido') };
+
+      const contactIds = input.contactIds.map(id => sanitizeUUID(id)).filter(Boolean) as string[];
+      if (contactIds.length === 0) return { ...vazio, error: null };
+
+      // A coluna precisa pertencer ao funil escolhido: um card apontando para
+      // coluna de outro board some da tela sem erro nenhum.
+      const { data: stage, error: stageError } = await supabase
+        .from('board_stages')
+        .select('id, board_id')
+        .eq('id', stageId)
+        .maybeSingle();
+      if (stageError || !stage) return { ...vazio, error: new Error('Coluna não encontrada') };
+      if (stage.board_id !== boardId) {
+        return { ...vazio, error: new Error('A coluna não pertence ao funil escolhido') };
+      }
+
+      const { data: deals, error: dealsError } = await supabase
+        .from('deals')
+        .select('id, contact_id, board_id, stage_id')
+        .in('contact_id', contactIds)
+        .eq('is_won', false)
+        .eq('is_lost', false)
+        .is('deleted_at', null);
+      if (dealsError) return { ...vazio, error: dealsError as Error };
+
+      const abertos = deals ?? [];
+      const comNegocio = new Set(abertos.map(d => d.contact_id as string));
+      const withoutDealCount = contactIds.filter(id => !comNegocio.has(id)).length;
+
+      const aMover = abertos.filter(d => d.board_id !== boardId || d.stage_id !== stageId);
+      const alreadyThereCount = abertos.length - aMover.length;
+
+      if (aMover.length === 0) {
+        return { movedCount: 0, alreadyThereCount, withoutDealCount, error: null };
+      }
+
+      const agora = new Date().toISOString();
+      const { error: updateError } = await supabase
+        .from('deals')
+        .update({
+          board_id: boardId,
+          stage_id: stageId,
+          last_stage_change_date: agora,
+          updated_at: agora,
+        })
+        .in('id', aMover.map(d => d.id as string));
+      if (updateError) return { ...vazio, error: updateError as Error };
+
+      return { movedCount: aMover.length, alreadyThereCount, withoutDealCount, error: null };
+    } catch (e) {
+      return { ...vazio, error: e as Error };
+    }
+  },
+
   async update(id: string, updates: Partial<Deal>): Promise<{ error: Error | null }> {
     try {
       if (!supabase) {

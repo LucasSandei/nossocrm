@@ -19,7 +19,11 @@ import {
   useDeleteCompany,
   useContactHasDeals,
 } from '@/lib/query/hooks/useContactsQuery';
-import { useCreateDeal, useBulkCreateDeals } from '@/lib/query/hooks/useDealsQuery';
+import {
+  useCreateDeal,
+  useBulkCreateDeals,
+  useBulkMoveDealsByContacts,
+} from '@/lib/query/hooks/useDealsQuery';
 import { useBoards } from '@/lib/query/hooks/useBoardsQuery';
 import { useActiveProducts } from '@/lib/query/hooks/useProductsQuery';
 import { contactsService } from '@/lib/supabase';
@@ -47,6 +51,7 @@ export const useContactsController = () => {
   const deleteContactMutation = useDeleteContact();
   const bulkDeleteContactsMutation = useBulkDeleteContacts();
   const bulkUpdateStageMutation = useBulkUpdateContactsStage();
+  const bulkMoveDealsMutation = useBulkMoveDealsByContacts();
   const contactsAllIdsMutation = useContactsAllIds();
   const checkHasDealsMutation = useContactHasDeals();
   const createCompanyMutation = useCreateCompany();
@@ -728,6 +733,51 @@ export const useContactsController = () => {
     setIsBulkAddToBoardOpen(false);
   };
 
+  const [isBulkMoveOpen, setIsBulkMoveOpen] = useState(false);
+
+  /**
+   * Move os negócios em aberto dos contatos selecionados.
+   *
+   * Diferente de "cadastrar em board": aqui o negócio já existe e muda de
+   * coluna ou de funil. Quem não tem negócio aberto não ganha um — para isso
+   * existe a outra ação, e criar aqui por conveniência esconderia da pessoa
+   * que aquele contato nunca tinha entrado em funil nenhum.
+   */
+  const bulkMoveSelectedContactsDeals = async (boardId: string, stageId: string) => {
+    const board = boards.find(b => b.id === boardId);
+    const ids = Array.from(selectedIds);
+    if (!board || ids.length === 0) return;
+
+    try {
+      const { movedCount, alreadyThereCount, withoutDealCount, error } =
+        await bulkMoveDealsMutation.mutateAsync({ boardId, stageId, contactIds: ids });
+      if (error) throw error;
+
+      const coluna = board.stages?.find(s => s.id === stageId)?.label ?? 'coluna escolhida';
+
+      if (movedCount > 0) {
+        addToast(`${movedCount} negócio(s) movido(s) para "${board.name} › ${coluna}"`, 'success');
+      }
+      if (alreadyThereCount > 0) {
+        addToast(`${alreadyThereCount} já estava(m) nessa coluna.`, 'info');
+      }
+      if (withoutDealCount > 0) {
+        addToast(
+          `${withoutDealCount} contato(s) sem negócio aberto. Use "Cadastrar em board" para criá-los.`,
+          'info'
+        );
+      }
+      if (movedCount === 0 && alreadyThereCount === 0 && withoutDealCount === 0) {
+        addToast('Nada a mover.', 'info');
+      }
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Erro ao mover os negócios.', 'error');
+    }
+
+    setSelectedIds(new Set());
+    setIsBulkMoveOpen(false);
+  };
+
   // Update contact wrapper
   const updateContact = (contactId: string, data: Partial<Contact>) => {
     updateContactMutation.mutate({
@@ -871,6 +921,9 @@ export const useContactsController = () => {
     createDealForContact,
     confirmBulkDelete,
     bulkUpdateStage,
+    isBulkMoveOpen,
+    setIsBulkMoveOpen,
+    bulkMoveSelectedContactsDeals,
     isBulkAddToBoardOpen,
     setIsBulkAddToBoardOpen,
     bulkAddSelectedContactsToBoard,
