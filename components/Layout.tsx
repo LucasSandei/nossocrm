@@ -55,6 +55,7 @@ import { isDebugMode, enableDebugMode, disableDebugMode } from '@/lib/debug';
 import { SkipLink } from '@/lib/a11y';
 import { useResponsiveMode } from '@/hooks/useResponsiveMode';
 import { BottomNav, MoreMenuSheet, NavigationRail } from '@/components/navigation';
+import { FullscreenSheet } from '@/components/ui/FullscreenSheet';
 import { useUnreadCount } from '@/lib/query/hooks/useConversationsQuery';
 import { useGoalProgress } from '@/lib/query/hooks/useGoalsQuery';
 
@@ -226,9 +227,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   }, []);
 
   // Expose bottom nav height so the content can pad itself and avoid being covered.
+  // 64px (não 56) para caber ícone + label com alvo de toque de 44px.
   useEffect(() => {
     if (typeof document === 'undefined') return;
-    document.documentElement.style.setProperty('--app-bottom-nav-height', isMobile ? '56px' : '0px');
+    document.documentElement.style.setProperty('--app-bottom-nav-height', isMobile ? '64px' : '0px');
   }, [isMobile]);
 
   // Close "More" menu when route changes.
@@ -483,16 +485,23 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="absolute top-[40%] right-[0%] w-[40%] h-[40%] bg-purple-500/10 rounded-full blur-[100px]"></div>
           </div>
 
-          {/* Header */}
-          <header className="h-16 glass border-b border-[var(--color-border-subtle)] flex items-center justify-between px-6 z-40 shrink-0" role="banner">
-            <h1 className="text-lg font-semibold font-display text-slate-900 dark:text-white">
+          {/* Header
+            * Mobile: só o essencial (título, IA, notificações). Tema e debug
+            * migram para o menu "Mais". Cabeçalho cheio de ícones de 32px
+            * é o que mais gera toque errado no celular. */}
+          <header
+            className="h-14 sm:h-16 glass border-b border-[var(--color-border-subtle)] flex items-center justify-between px-4 sm:px-6 z-40 shrink-0"
+            role="banner"
+          >
+            <h1 className="text-base sm:text-lg font-semibold font-display text-slate-900 dark:text-white truncate">
               {getPageTitle(pathname)}
             </h1>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1 sm:gap-4">
               <button
                 type="button"
                 onClick={() => setIsGlobalAIOpen(!isGlobalAIOpen)}
-                className={`p-2 rounded-full transition-all active:scale-95 focus-visible-ring ${isGlobalAIOpen
+                aria-label="Assistente de IA"
+                className={`touch-target flex items-center justify-center p-2 rounded-full transition-all active:scale-95 focus-visible-ring ${isGlobalAIOpen
                   ? 'text-primary-600 bg-primary-50 dark:text-primary-400 dark:bg-primary-900/20'
                   : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10'
                   }`}
@@ -500,10 +509,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <Sparkles size={20} aria-hidden="true" />
               </button>
 
-              {process.env.NODE_ENV === 'development' && (
+              {process.env.NODE_ENV === 'development' && !isMobile && (
                 <button
                   type="button"
                   onClick={toggleDebugMode}
+                  aria-label="Modo debug"
                   className={`p-2 rounded-full transition-all active:scale-95 focus-visible-ring ${debugEnabled
                     ? 'text-purple-600 bg-purple-100 dark:text-purple-400 dark:bg-purple-900/30 ring-2 ring-purple-400/50'
                     : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10'
@@ -514,13 +524,17 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               )}
 
               <NotificationPopover />
-              <button
-                type="button"
-                onClick={toggleDarkMode}
-                className="p-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-all active:scale-95 focus-visible-ring"
-              >
-                {darkMode ? <Sun size={20} aria-hidden="true" /> : <Moon size={20} aria-hidden="true" />}
-              </button>
+
+              {!isMobile && (
+                <button
+                  type="button"
+                  onClick={toggleDarkMode}
+                  aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}
+                  className="p-2 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 rounded-full transition-all active:scale-95 focus-visible-ring"
+                >
+                  {darkMode ? <Sun size={20} aria-hidden="true" /> : <Moon size={20} aria-hidden="true" />}
+                </button>
+              )}
             </div>
           </header>
 
@@ -529,7 +543,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             className={`flex-1 overflow-auto relative scroll-smooth ${
               pathname === '/messaging' || pathname.startsWith('/messaging/')
                 ? 'p-0'
-                : 'p-6 pb-[calc(1.5rem+var(--app-bottom-nav-height,0px)+var(--app-safe-area-bottom,0px))]'
+                : 'p-4 sm:p-6 pb-[calc(1rem+var(--app-bottom-nav-height,0px)+var(--app-safe-area-bottom,0px))] sm:pb-[calc(1.5rem+var(--app-bottom-nav-height,0px)+var(--app-safe-area-bottom,0px))]'
             }`}
             tabIndex={-1}
           >
@@ -537,23 +551,39 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </main>
         </div>
 
-        {/* Right Sidebar (AI Assistant) */}
-        <aside
-          aria-label="Assistente de IA"
-          aria-hidden={!isGlobalAIOpen}
-          className={`border-l border-[var(--color-border)] bg-surface transition-all duration-300 ease-in-out overflow-hidden flex flex-col ${isGlobalAIOpen ? 'w-96 opacity-100' : 'w-0 opacity-0'}`}
-        >
-          <div className="w-96 h-full">
-            {isGlobalAIOpen && (
-              <UIChat />
-            )}
-          </div>
-        </aside>
+        {/* Right Sidebar (AI Assistant), desktop e tablet.
+          * No mobile um painel de 384px ao lado do conteúdo não cabe: lá o chat
+          * abre como sheet de tela cheia (abaixo). */}
+        {!isMobile && (
+          <aside
+            aria-label="Assistente de IA"
+            aria-hidden={!isGlobalAIOpen}
+            className={`border-l border-[var(--color-border)] bg-surface transition-all duration-300 ease-in-out overflow-hidden flex flex-col ${isGlobalAIOpen ? 'w-96 opacity-100' : 'w-0 opacity-0'}`}
+          >
+            <div className="w-96 h-full">
+              {isGlobalAIOpen && (
+                <UIChat />
+              )}
+            </div>
+          </aside>
+        )}
       </div>
 
       {/* Mobile app shell */}
       <BottomNav onOpenMore={() => setIsMoreOpen(true)} />
       <MoreMenuSheet isOpen={isMoreOpen} onClose={() => setIsMoreOpen(false)} />
+
+      {/* Assistente de IA em tela cheia no mobile */}
+      {isMobile && (
+        <FullscreenSheet
+          isOpen={isGlobalAIOpen}
+          onClose={() => setIsGlobalAIOpen(false)}
+          title="Assistente de IA"
+          bodyClassName="p-0"
+        >
+          <UIChat />
+        </FullscreenSheet>
+      )}
     </div>
   );
 };

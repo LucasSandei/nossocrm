@@ -1,10 +1,11 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { DealView, BoardStage } from '@/types';
 import { DealCard } from './DealCard';
 import { isDealRotting, getActivityStatus } from '@/features/boards/hooks/useBoardsController';
 import { MoveToStageModal } from '../Modals/MoveToStageModal';
 import { SkeletonDealCard } from '@/components/ui/Skeleton';
 import { useLifecycleStages } from '@/lib/query/hooks/useLifecycleStagesQuery';
+import { useResponsiveMode } from '@/hooks/useResponsiveMode';
 
 /** Cards revelados por vez em cada coluna (scroll infinito). */
 const CARDS_PER_PAGE = 50;
@@ -122,7 +123,18 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   isLoading = false,
 }) => {
   const { data: lifecycleStages = [] } = useLifecycleStages();
+  const { mode } = useResponsiveMode();
+  const isMobile = mode === 'mobile';
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+
+  /**
+   * Mobile: qual etapa está aberta.
+   *
+   * Rolar horizontalmente por colunas de 20rem numa tela de 375px significa ver
+   * meia coluna por vez e perder a noção de onde se está. No celular mostramos
+   * uma etapa por vez, escolhida por um seletor de chips.
+   */
+  const [activeStageId, setActiveStageId] = useState<string | null>(null);
   
   // State for move-to-stage modal (keyboard accessibility alternative to drag-and-drop)
   const [moveToStageModal, setMoveToStageModal] = useState<{
@@ -222,6 +234,156 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     }
     setMoveToStageModal(null);
   }, [onMoveDealToStage]);
+
+  // Mantém a etapa aberta válida quando o board troca ou as etapas mudam.
+  useEffect(() => {
+    if (stages.length === 0) return;
+    setActiveStageId((current) =>
+      current && stages.some((s) => s.id === current) ? current : stages[0].id
+    );
+  }, [stages]);
+
+  const moveModal = moveToStageModal ? (
+    <MoveToStageModal
+      isOpen={moveToStageModal.isOpen}
+      onClose={() => setMoveToStageModal(null)}
+      onMove={handleConfirmMoveToStage}
+      deal={moveToStageModal.deal}
+      stages={stages}
+      currentStageId={moveToStageModal.currentStageId}
+    />
+  ) : null;
+
+  // ============ MOBILE: uma etapa por vez ============
+  if (isMobile) {
+    const activeStage = stages.find((s) => s.id === activeStageId) ?? stages[0];
+    const stageDeals = activeStage ? dealsByStageId.map.get(activeStage.id) ?? [] : [];
+    const stageValue = activeStage ? dealsByStageId.totals.get(activeStage.id) ?? 0 : 0;
+    const visibleCount = activeStage
+      ? Math.min(visibleByStage[activeStage.id] ?? CARDS_PER_PAGE, stageDeals.length)
+      : 0;
+    const visibleDeals = stageDeals.slice(0, visibleCount);
+    const remainingCount = stageDeals.length - visibleCount;
+
+    return (
+      <div className="flex h-full flex-col">
+        {/* Seletor de etapas */}
+        <div
+          role="tablist"
+          aria-label="Etapas do pipeline"
+          className="mobile-scroll-x flex shrink-0 gap-2 overflow-x-auto pb-3"
+        >
+          {stages.map((stage) => {
+            const count = dealsByStageId.map.get(stage.id)?.length ?? 0;
+            const isActive = activeStage?.id === stage.id;
+
+            return (
+              <button
+                key={stage.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => setActiveStageId(stage.id)}
+                className={`mobile-snap-start flex min-h-[44px] shrink-0 items-center gap-2 rounded-full border px-3 text-sm font-medium transition-colors ${
+                  isActive
+                    ? 'border-primary-300 bg-primary-50 text-primary-700 dark:border-primary-700/50 dark:bg-primary-900/30 dark:text-primary-300'
+                    : 'border-slate-200 bg-white text-slate-600 dark:border-white/10 dark:bg-dark-card dark:text-slate-300'
+                }`}
+              >
+                <span className={`h-2 w-2 shrink-0 rounded-full ${stage.color}`} aria-hidden="true" />
+                <span className="whitespace-nowrap font-display tracking-wide">{stage.label}</span>
+                <span
+                  className={`rounded-full px-1.5 text-xs font-bold tabular-nums ${
+                    isActive
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-800/50 dark:text-primary-200'
+                      : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Total da etapa aberta */}
+        {activeStage && (
+          <div className="flex shrink-0 items-baseline justify-between px-1 pb-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              {stageDeals.length} negócio{stageDeals.length !== 1 ? 's' : ''}
+            </span>
+            <span className="font-mono text-sm font-bold text-slate-900 dark:text-white">
+              ${stageValue.toLocaleString()}
+            </span>
+          </div>
+        )}
+
+        {/* Cards da etapa aberta */}
+        <div
+          role="list"
+          aria-label={activeStage ? `Negócios em ${activeStage.label}` : 'Negócios'}
+          onScroll={activeStage ? handleColumnScroll(activeStage.id, stageDeals.length) : undefined}
+          className="min-h-0 flex-1 space-y-2 overflow-y-auto rounded-xl bg-slate-100/50 p-2 dark:bg-black/20"
+        >
+          {isLoading && (
+            <>
+              <SkeletonDealCard />
+              <SkeletonDealCard />
+              <SkeletonDealCard />
+            </>
+          )}
+
+          {!isLoading && stageDeals.length === 0 && (
+            <div className="flex flex-col items-center justify-center px-4 py-12 text-center">
+              <p className="text-sm text-slate-400 dark:text-slate-500">
+                Nenhum negócio nesta etapa.
+              </p>
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-600">
+                Use o botão &quot;Mover&quot; nos cards de outra etapa para trazer um para cá.
+              </p>
+            </div>
+          )}
+
+          {!isLoading &&
+            visibleDeals.map((deal) => (
+              <div key={deal.id} role="listitem">
+                <DealCard
+                  deal={deal}
+                  isRotting={isDealRotting(deal) && !deal.isWon && !deal.isLost}
+                  activityStatus={getActivityStatus(deal)}
+                  isDragging={false}
+                  onDragStart={handleDragStart}
+                  onSelect={handleSelectDeal}
+                  isMenuOpen={openActivityMenuId === deal.id}
+                  setOpenMenuId={setOpenActivityMenuId}
+                  onQuickAddActivity={handleQuickAddActivity}
+                  setLastMouseDownDealId={setLastMouseDownDealId}
+                  onMoveToStage={onMoveDealToStage ? handleOpenMoveToStage : undefined}
+                  showMoveButton
+                />
+              </div>
+            ))}
+
+          {!isLoading && remainingCount > 0 && activeStage && (
+            <button
+              type="button"
+              onClick={() =>
+                setVisibleByStage((prev) => ({
+                  ...prev,
+                  [activeStage.id]: (prev[activeStage.id] ?? CARDS_PER_PAGE) + CARDS_PER_PAGE,
+                }))
+              }
+              className="min-h-[44px] w-full text-sm font-medium text-primary-600 dark:text-primary-400"
+            >
+              Carregar mais {Math.min(remainingCount, CARDS_PER_PAGE)} de {remainingCount}
+            </button>
+          )}
+        </div>
+
+        {moveModal}
+      </div>
+    );
+  }
 
   return (
     <div role="list" aria-label="Colunas do pipeline" className="flex gap-4 h-full overflow-x-auto pb-2 w-full">
@@ -378,16 +540,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
       })}
       
       {/* Keyboard-accessible modal for moving deals between stages */}
-      {moveToStageModal && (
-        <MoveToStageModal
-          isOpen={moveToStageModal.isOpen}
-          onClose={() => setMoveToStageModal(null)}
-          onMove={handleConfirmMoveToStage}
-          deal={moveToStageModal.deal}
-          stages={stages}
-          currentStageId={moveToStageModal.currentStageId}
-        />
-      )}
+      {moveModal}
     </div>
   );
 };

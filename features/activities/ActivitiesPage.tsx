@@ -9,6 +9,7 @@ import { ActivitiesCalendar } from './components/ActivitiesCalendar';
 import { ActivityFormModal } from './components/ActivityFormModal';
 import { BulkActionsToolbar } from './components/BulkActionsToolbar';
 import { useToast } from '@/context/ToastContext';
+import { useResponsiveMode } from '@/hooks/useResponsiveMode';
 
 /**
  * Aba **Tarefas** (rota `/activities`).
@@ -50,6 +51,12 @@ export const ActivitiesPage: React.FC = () => {
     const { addToast } = useToast();
     const [selectedActivities, setSelectedActivities] = useState<Set<string>>(new Set());
 
+    const { mode: responsiveMode } = useResponsiveMode();
+    const isMobile = responsiveMode === 'mobile';
+
+    // Calendário semanal só a partir de sm. Ver `hideViewToggle`.
+    const effectiveViewMode = isMobile ? 'list' : viewMode;
+
     const handleSelectActivity = (id: string, selected: boolean) => {
         setSelectedActivities(prev => {
             const newSet = new Set(prev);
@@ -81,15 +88,16 @@ export const ActivitiesPage: React.FC = () => {
     };
 
     return (
-        <div className="p-8 max-w-400 mx-auto">
+        <div className="sm:p-8 max-w-400 mx-auto">
             <ActivitiesHeader
-                viewMode={viewMode}
+                viewMode={effectiveViewMode}
                 setViewMode={setViewMode}
                 onNewActivity={handleNewActivity}
                 dateFilter={dateFilter}
+                hideViewToggle={isMobile}
             />
 
-            {viewMode === 'list' ? (
+            {effectiveViewMode === 'list' ? (
                 <>
                     <ActivitiesFilters
                         searchTerm={searchTerm}
