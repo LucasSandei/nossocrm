@@ -3,7 +3,7 @@
 import React from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { Trash2, X, LayoutGrid } from 'lucide-react';
+import { Trash2, X, LayoutGrid, MoveRight } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useContactsController } from './hooks/useContactsController';
 import { ContactsHeader } from './components/ContactsHeader';
@@ -155,6 +155,18 @@ export const ContactsPage: React.FC = () => {
                                     <LayoutGrid size={14} />
                                     Cadastrar em board
                                 </button>
+                                {/*
+                                  Move quem já tem negócio, em vez de criar um novo.
+                                  Serve para tirar de uma coluna e pôr em outra, e
+                                  também para trocar de funil, na seleção inteira.
+                                */}
+                                <button
+                                    onClick={() => controller.setIsBulkMoveOpen(true)}
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-lg transition-colors"
+                                >
+                                    <MoveRight size={14} />
+                                    Mover no funil
+                                </button>
                             </>
                         )}
                         <button
@@ -235,6 +247,18 @@ export const ContactsPage: React.FC = () => {
                 onConfirm={controller.bulkAddSelectedContactsToBoard}
                 boards={controller.boards}
                 contactCount={controller.selectedIds.size}
+            />
+
+            <BulkAddToBoardModal
+                isOpen={controller.isBulkMoveOpen}
+                onClose={() => controller.setIsBulkMoveOpen(false)}
+                onConfirm={controller.bulkMoveSelectedContactsDeals}
+                boards={controller.boards}
+                contactCount={controller.selectedIds.size}
+                titulo="Mover no funil"
+                descricao={`Move o negócio em aberto de ${controller.selectedIds.size} contato(s) para o funil e a coluna escolhidos`}
+                rotuloConfirmar={`Mover ${controller.selectedIds.size} negócio(s)`}
+                rotuloEnviando="Movendo negócios..."
             />
 
             <ConfirmModal

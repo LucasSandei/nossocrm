@@ -9,12 +9,21 @@ interface BulkAddToBoardModalProps {
   onConfirm: (boardId: string, stageId: string) => void | Promise<void>;
   boards: Board[];
   contactCount: number;
+  /** Sobrescreve os textos para reaproveitar o modal em outra ação. */
+  titulo?: string;
+  descricao?: string;
+  rotuloConfirmar?: string;
+  rotuloEnviando?: string;
 }
 
 /**
- * Modal para a ação em massa "Cadastrar em board": escolhe um board e um
- * estágio dentro dele, e cria um negócio para cada contato selecionado
- * naquele board/estágio.
+ * Escolha de funil e coluna para uma ação em massa.
+ *
+ * Serve a duas ações com a mesma pergunta: "cadastrar em board", que cria o
+ * negócio de quem ainda não tem, e "mover no funil", que muda de lugar o que
+ * já existe. O que muda entre elas são os textos e o que acontece no confirmar,
+ * não a escolha — duplicar a tela faria as duas divergirem na primeira
+ * correção de acessibilidade.
  */
 export const BulkAddToBoardModal: React.FC<BulkAddToBoardModalProps> = ({
   isOpen,
@@ -22,6 +31,10 @@ export const BulkAddToBoardModal: React.FC<BulkAddToBoardModalProps> = ({
   onConfirm,
   boards,
   contactCount,
+  titulo = 'Cadastrar em Board',
+  descricao,
+  rotuloConfirmar,
+  rotuloEnviando = 'Criando negócios...',
 }) => {
   const headingId = useId();
   useFocusReturn({ enabled: isOpen });
@@ -66,10 +79,10 @@ export const BulkAddToBoardModal: React.FC<BulkAddToBoardModalProps> = ({
           <div className="flex items-center justify-between p-6 border-b border-slate-200 dark:border-white/10">
             <div>
               <h2 id={headingId} className="text-xl font-bold text-slate-900 dark:text-white">
-                Cadastrar em Board
+                {titulo}
               </h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                Cria um negócio para cada um dos <strong>{contactCount}</strong> contatos selecionados
+                {descricao ?? `Cria um negócio para cada um dos ${contactCount} contatos selecionados`}
               </p>
             </div>
             <button
@@ -148,7 +161,7 @@ export const BulkAddToBoardModal: React.FC<BulkAddToBoardModalProps> = ({
                 disabled={!selectedStageId || isSubmitting}
                 className="w-full bg-primary-600 hover:bg-primary-500 disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:cursor-not-allowed text-white font-bold py-2.5 rounded-lg transition-all"
               >
-                {isSubmitting ? 'Criando negócios...' : `Criar ${contactCount} negócio(s)`}
+                {isSubmitting ? rotuloEnviando : (rotuloConfirmar ?? `Criar ${contactCount} negócio(s)`)}
               </button>
             </div>
           )}
