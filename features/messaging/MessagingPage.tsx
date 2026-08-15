@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { MessageSquare, User, CheckCircle, MoreVertical, LinkIcon, Trash2, RotateCcw, Search } from 'lucide-react';
+import { MessageSquare, User, CheckCircle, MoreVertical, LinkIcon, Trash2, RotateCcw, Search, ArrowLeft, Info } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { sanitizeUrl } from '@/lib/utils/sanitize';
@@ -34,6 +34,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Modal } from '@/components/ui/Modal';
+import { FullscreenSheet } from '@/components/ui/FullscreenSheet';
+import { useResponsiveMode } from '@/hooks/useResponsiveMode';
 import { useRealtimeSyncMessaging } from '@/lib/realtime/useRealtimeSync';
 import { queryKeys } from '@/lib/query';
 import { useContactPresence } from '@/lib/messaging/hooks/useContactPresence';
@@ -58,6 +60,12 @@ export function MessagingPage({ initialConversationId }: MessagingPageProps = {}
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [replyToMessage, setReplyToMessage] = useState<import('@/lib/messaging/types').MessagingMessage | null>(null);
+
+  // Mobile: a tela não comporta os 3 painéis. Vira navegação em pilha
+  // (lista → conversa) e o painel do contato abre como sheet.
+  const { mode } = useResponsiveMode();
+  const isMobile = mode === 'mobile';
+  const [isContactPanelOpen, setIsContactPanelOpen] = useState(false);
 
   // Subscribe to realtime updates
   useRealtimeSyncMessaging();
@@ -128,6 +136,15 @@ export function MessagingPage({ initialConversationId }: MessagingPageProps = {}
     router.push(`/messaging?id=${id}`, { scroll: false });
   }, [router]);
 
+  // Mobile: volta da conversa para a lista.
+  const handleBackToList = useCallback(() => {
+    setSelectedConversationId(undefined);
+    setShowSearch(false);
+    setReplyToMessage(null);
+    setIsContactPanelOpen(false);
+    router.push('/messaging', { scroll: false });
+  }, [router]);
+
   // Link conversation to contact
   const handleLinkContact = useCallback(async (contactId: string) => {
     if (!selectedConversationId) return;
@@ -173,10 +190,21 @@ export function MessagingPage({ initialConversationId }: MessagingPageProps = {}
     router.push(`/boards?contact=${contactId}`);
   }, [router]);
 
+  // No mobile a conversa ocupa a tela inteira (inclusive por cima da bottom nav),
+  // como num app de mensagens nativo. No desktop segue o layout de 3 painéis.
+  const isThreadFullscreen = isMobile && !!selectedConversationId;
+
   return (
-    <div className="h-[calc(100vh-4rem)] flex">
-      {/* Conversation List */}
-      <div className="w-80 flex-shrink-0">
+    <div
+      className={cn(
+        'flex',
+        isMobile
+          ? 'h-[calc(100dvh-3.5rem-var(--app-bottom-nav-height,0px)-var(--app-safe-area-bottom,0px))]'
+          : 'h-[calc(100vh-4rem)]'
+      )}
+    >
+      {/* Conversation List: full width no mobile, coluna fixa no desktop */}
+      <div className={cn('flex-shrink-0', isMobile ? 'w-full' : 'w-80', isThreadFullscreen && 'hidden')}>
         <ConversationList
           selectedId={selectedConversationId}
           onSelect={handleSelectConversation}
@@ -185,11 +213,29 @@ export function MessagingPage({ initialConversationId }: MessagingPageProps = {}
       </div>
 
       {/* Message Thread */}
-      <div className="flex-1 flex flex-col bg-slate-50 dark:bg-slate-900/50">
+      <div
+        className={cn(
+          'flex flex-col bg-slate-50 dark:bg-slate-900/50',
+          isThreadFullscreen
+            ? 'fixed inset-0 z-[60] pb-[var(--app-safe-area-bottom,0px)]'
+            : 'flex-1',
+          isMobile && !isThreadFullscreen && 'hidden'
+        )}
+      >
         {selectedConversation ? (
           <>
             {/* Header */}
-            <div className="h-16 px-4 flex items-center gap-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-white/10">
+            <div className="h-16 px-2 sm:px-4 flex items-center gap-2 sm:gap-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-white/10">
+              {isMobile && (
+                <button
+                  type="button"
+                  onClick={handleBackToList}
+                  aria-label="Voltar para a lista de conversas"
+                  className="touch-target flex items-center justify-center -ml-1 rounded-lg text-slate-500 active:bg-slate-100 dark:active:bg-white/5"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+              )}
               <div className="relative">
                 {sanitizeUrl(selectedConversation.externalContactAvatar) ? (
                   <img
@@ -220,62 +266,111 @@ export function MessagingPage({ initialConversationId }: MessagingPageProps = {}
                   />
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <AssignmentDropdown
-                  conversationId={selectedConversation.id}
-                  assignedUserId={selectedConversation.assignedUserId}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowSearch((v) => !v)}
-                  className={cn(
-                    'p-2 rounded-lg transition-colors',
-                    showSearch
-                      ? 'text-primary-500 bg-primary-50 dark:bg-primary-500/10'
-                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5'
-                  )}
-                  title="Buscar mensagens"
-                >
-                  <Search className="w-5 h-5" />
-                </button>
-                {selectedConversation.status === 'open' && (
+              {/* Ações. No mobile só "info" + overflow ficam visíveis: seis
+                * ícones de 20px lado a lado num header de 375px viram um alvo
+                * de toque só. O resto migra para o menu. */}
+              <div className="flex items-center gap-1 sm:gap-2">
+                {!isMobile && (
+                  <>
+                    <AssignmentDropdown
+                      conversationId={selectedConversation.id}
+                      assignedUserId={selectedConversation.assignedUserId}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowSearch((v) => !v)}
+                      className={cn(
+                        'p-2 rounded-lg transition-colors',
+                        showSearch
+                          ? 'text-primary-500 bg-primary-50 dark:bg-primary-500/10'
+                          : 'text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5'
+                      )}
+                      title="Buscar mensagens"
+                    >
+                      <Search className="w-5 h-5" />
+                    </button>
+                    {selectedConversation.status === 'open' && (
+                      <button
+                        type="button"
+                        onClick={() => resolveConversation(selectedConversation.id)}
+                        className="p-2 text-slate-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-500/10 rounded-lg transition-colors"
+                        title="Marcar como resolvida"
+                      >
+                        <CheckCircle className="w-5 h-5" />
+                      </button>
+                    )}
+                    {!selectedConversation.contactId && (
+                      <button
+                        type="button"
+                        onClick={() => setIsLinkModalOpen(true)}
+                        className="p-2 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-500/10 rounded-lg transition-colors"
+                        title="Vincular contato"
+                      >
+                        <LinkIcon className="w-5 h-5" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"
+                      title="Excluir conversa"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </>
+                )}
+
+                {isMobile && (
                   <button
                     type="button"
-                    onClick={() => resolveConversation(selectedConversation.id)}
-                    className="p-2 text-slate-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-500/10 rounded-lg transition-colors"
-                    title="Marcar como resolvida"
+                    onClick={() => setIsContactPanelOpen(true)}
+                    aria-label="Detalhes do contato"
+                    className="touch-target flex items-center justify-center rounded-lg text-slate-400 active:bg-slate-100 dark:active:bg-white/5"
                   >
-                    <CheckCircle className="w-5 h-5" />
+                    <Info className="w-5 h-5" />
                   </button>
                 )}
-                {!selectedConversation.contactId && (
-                  <button
-                    type="button"
-                    onClick={() => setIsLinkModalOpen(true)}
-                    className="p-2 text-slate-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-500/10 rounded-lg transition-colors"
-                    title="Vincular contato"
-                  >
-                    <LinkIcon className="w-5 h-5" />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"
-                  title="Excluir conversa"
-                >
-                  <Trash2 className="w-5 h-5" />
-                </button>
+
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors"
+                      aria-label="Mais ações da conversa"
+                      className="touch-target flex items-center justify-center p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors"
                     >
                       <MoreVertical className="w-5 h-5" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuContent align="end" className="w-56">
+                    {isMobile && (
+                      <>
+                        <DropdownMenuItem
+                          onClick={() => setShowSearch((v) => !v)}
+                          className="gap-2"
+                        >
+                          <Search className="w-4 h-4" />
+                          Buscar mensagens
+                        </DropdownMenuItem>
+                        {selectedConversation.status === 'open' && (
+                          <DropdownMenuItem
+                            onClick={() => resolveConversation(selectedConversation.id)}
+                            className="gap-2"
+                          >
+                            <CheckCircle className="w-4 h-4" />
+                            Marcar como resolvida
+                          </DropdownMenuItem>
+                        )}
+                        {!selectedConversation.contactId && (
+                          <DropdownMenuItem
+                            onClick={() => setIsLinkModalOpen(true)}
+                            className="gap-2"
+                          >
+                            <LinkIcon className="w-4 h-4" />
+                            Vincular contato
+                          </DropdownMenuItem>
+                        )}
+                      </>
+                    )}
                     {selectedConversation.status === 'resolved' && (
                       <DropdownMenuItem
                         onClick={() => reopenConversation(selectedConversation.id)}
@@ -329,16 +424,38 @@ export function MessagingPage({ initialConversationId }: MessagingPageProps = {}
         )}
       </div>
 
-      {/* Contact Panel */}
-      <div className="w-80 border-l border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 flex-shrink-0">
-        <ContactPanel
-          conversation={selectedConversation}
-          isLoading={isConversationLoading && !!selectedConversationId}
-          onLinkContact={() => setIsLinkModalOpen(true)}
-          onViewContact={handleViewContact}
-          onViewDeals={handleViewDeals}
-        />
-      </div>
+      {/* Contact Panel: coluna no desktop, sheet no mobile */}
+      {!isMobile && (
+        <div className="w-80 border-l border-slate-200 dark:border-white/10 bg-white dark:bg-slate-900 flex-shrink-0">
+          <ContactPanel
+            conversation={selectedConversation}
+            isLoading={isConversationLoading && !!selectedConversationId}
+            onLinkContact={() => setIsLinkModalOpen(true)}
+            onViewContact={handleViewContact}
+            onViewDeals={handleViewDeals}
+          />
+        </div>
+      )}
+
+      {isMobile && (
+        <FullscreenSheet
+          isOpen={isContactPanelOpen}
+          onClose={() => setIsContactPanelOpen(false)}
+          title="Detalhes do contato"
+          bodyClassName="p-0"
+        >
+          <ContactPanel
+            conversation={selectedConversation}
+            isLoading={isConversationLoading && !!selectedConversationId}
+            onLinkContact={() => {
+              setIsContactPanelOpen(false);
+              setIsLinkModalOpen(true);
+            }}
+            onViewContact={handleViewContact}
+            onViewDeals={handleViewDeals}
+          />
+        </FullscreenSheet>
+      )}
 
       {/* Contact Link Modal */}
       <ContactLinkModal

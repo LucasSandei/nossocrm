@@ -425,6 +425,64 @@ body {
 }
 
 /* ========================================
+ * Mobile (< md)
+ * ======================================== */
+@media (max-width: 767px) {
+
+  /* iOS dá zoom automático em qualquer campo com fonte < 16px ao focar, e não
+   * desfaz o zoom depois. Forçar 16px nos campos é o único jeito de evitar isso
+   * sem bloquear o pinch-to-zoom do usuário. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  /* Remove o flash cinza do tap no Android/iOS. Os componentes já dão
+   * feedback com active:scale/bg. */
+  a,
+  button,
+  [role='button'],
+  [role='tab'] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Evita o "bounce" da página inteira quando uma lista interna chega ao fim. */
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
+/**
+ * .touch-target: garante o mínimo de 44x44px recomendado (WCAG 2.5.5 / HIG).
+ * Aplicar em ícone-botões que no desktop são menores.
+ */
+@media (max-width: 767px) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/**
+ * .mobile-scroll-x: trilho horizontal com scroll por "páginas" (snap),
+ * usado nas colunas do Kanban e em abas roláveis.
+ */
+.mobile-scroll-x {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.mobile-scroll-x::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-snap-start {
+  scroll-snap-align: start;
+}
+
+/* ========================================
  * Animations
  * ======================================== */
 @keyframes ping {

@@ -6,6 +6,13 @@ interface ActivitiesHeaderProps {
   setViewMode: (mode: 'list' | 'calendar') => void;
   onNewActivity: () => void;
   dateFilter?: 'ALL' | 'overdue' | 'today' | 'upcoming';
+  /**
+   * Esconde o alternador de visão.
+   *
+   * O calendário é uma grade semanal de 900px (8 colunas). No celular vira
+   * scroll horizontal sem contexto, então a aba fica só na lista.
+   */
+  hideViewToggle?: boolean;
 }
 
 /** Cabeçalho da aba **Tarefas** (só tarefas; atividades ficam na timeline do card). */
@@ -14,6 +21,7 @@ export const ActivitiesHeader: React.FC<ActivitiesHeaderProps> = ({
   setViewMode,
   onNewActivity,
   dateFilter = 'ALL',
+  hideViewToggle = false,
 }) => {
   const filterLabel =
     dateFilter === 'overdue'
@@ -25,13 +33,13 @@ export const ActivitiesHeader: React.FC<ActivitiesHeaderProps> = ({
           : null;
 
   return (
-    <div className="flex justify-between items-center mb-8">
+    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6 sm:mb-8">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white font-display">
           Tarefas
         </h1>
-        <div className="mt-1 flex items-center gap-2">
-          <p className="text-slate-500 dark:text-slate-400">
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <p className="text-sm sm:text-base text-slate-500 dark:text-slate-400">
             O que precisa ser feito: ligações, emails, mensagens, reuniões e tarefas
           </p>
           {filterLabel && (
@@ -42,7 +50,7 @@ export const ActivitiesHeader: React.FC<ActivitiesHeaderProps> = ({
         </div>
       </div>
       <div className="flex items-center gap-3">
-        <div className="flex bg-white dark:bg-dark-card p-1 rounded-lg border border-slate-200 dark:border-white/10">
+        <div className={`${hideViewToggle ? 'hidden' : 'flex'} bg-white dark:bg-dark-card p-1 rounded-lg border border-slate-200 dark:border-white/10`}>
           <button
             onClick={() => setViewMode('list')}
             className={`p-2 rounded-md transition-all ${
@@ -66,7 +74,7 @@ export const ActivitiesHeader: React.FC<ActivitiesHeaderProps> = ({
         </div>
         <button
           onClick={onNewActivity}
-          className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-4 py-2.5 rounded-lg font-medium transition-colors shadow-lg shadow-primary-600/20"
+          className="flex flex-1 sm:flex-none items-center justify-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-4 min-h-[44px] rounded-lg font-medium transition-colors shadow-lg shadow-primary-600/20"
         >
           <Plus size={20} />
           Nova Tarefa

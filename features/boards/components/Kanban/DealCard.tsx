@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import Image from 'next/image';
 import { DealView } from '@/types';
-import { Building2, Hourglass, Trophy, XCircle } from 'lucide-react';
+import { ArrowRightLeft, Building2, Hourglass, Trophy, XCircle } from 'lucide-react';
 import { ActivityStatusIcon } from './ActivityStatusIcon';
 import { priorityAriaLabelPtBr } from '@/lib/utils/priority';
 
@@ -27,6 +27,14 @@ interface DealCardProps {
   setLastMouseDownDealId: (id: string | null) => void;
   /** Callback to open move-to-stage modal for keyboard accessibility */
   onMoveToStage?: (dealId: string) => void;
+  /**
+   * Exibe um botão "Mover" visível no rodapé do card.
+   *
+   * No mobile o drag-and-drop HTML5 não dispara (eventos de toque não geram
+   * `dragstart`), então mover de etapa precisa de um caminho explícito. Não
+   * pode ficar só dentro do menu de atividades.
+   */
+  showMoveButton?: boolean;
 }
 
 // Performance: formatadores reaproveitados entre todos os cards da lista.
@@ -64,6 +72,7 @@ const DealCardComponent: React.FC<DealCardProps> = ({
   onQuickAddActivity,
   setLastMouseDownDealId,
   onMoveToStage,
+  showMoveButton = false,
 }) => {
   const [localDragging, setLocalDragging] = useState(false);
   const isClosed = isDealClosed(deal);
@@ -297,7 +306,20 @@ const DealCardComponent: React.FC<DealCardProps> = ({
           </span>
         </div>
 
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
+          {showMoveButton && onMoveToStage && !isClosed && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMoveToStage(deal.id);
+              }}
+              className="flex items-center gap-1 min-h-[36px] px-2.5 rounded-lg text-xs font-medium text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 border border-primary-100 dark:border-primary-800/50 active:bg-primary-100 dark:active:bg-primary-900/50 transition-colors"
+            >
+              <ArrowRightLeft size={12} aria-hidden="true" />
+              Mover
+            </button>
+          )}
           <ActivityStatusIcon
             status={activityStatus}
             type={deal.nextActivity?.type}

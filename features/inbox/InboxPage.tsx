@@ -8,6 +8,7 @@ import { InboxOverviewView } from './components/InboxOverviewView';
 import { InboxListView } from './components/InboxListView';
 import { InboxFocusView } from './components/InboxFocusView';
 import { DebugFillButton } from '@/components/debug/DebugFillButton';
+import { useResponsiveMode } from '@/hooks/useResponsiveMode';
 
 /**
  * Componente React `InboxPage`.
@@ -56,6 +57,14 @@ export const InboxPage: React.FC = () => {
     seedInboxDebug,
   } = useInboxController();
 
+  const { mode: responsiveMode } = useResponsiveMode();
+  const isMobile = responsiveMode === 'mobile';
+
+  // O modo Foco não existe no mobile. Se o usuário estava nele e a tela
+  // encolheu (ou o estado veio persistido), cai para a Lista em vez de
+  // renderizar um cockpit de três colunas dentro de 375px.
+  const effectiveViewMode = isMobile && viewMode === 'focus' ? 'list' : viewMode;
+
   const listDefaults = useMemo(
     () => ({
       suggestionsDefaultOpen: true,
@@ -65,11 +74,11 @@ export const InboxPage: React.FC = () => {
   );
 
   return (
-    <div className="max-w-6xl mx-auto py-8 px-6">
-      {/* Header */}
-      <div className="flex items-start justify-between mb-8">
+    <div className="max-w-6xl mx-auto py-4 sm:py-8 sm:px-6">
+      {/* Header: empilha no mobile; lado a lado só a partir de sm */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-start sm:justify-between gap-4 mb-6 sm:mb-8">
         <div>
-          <h1 className="text-3xl font-bold font-display text-slate-900 dark:text-white mb-1">
+          <h1 className="text-2xl sm:text-3xl font-bold font-display text-slate-900 dark:text-white mb-1">
             Inbox
           </h1>
           <p className="text-slate-500 dark:text-slate-400">Sua mesa de trabalho.</p>
@@ -78,11 +87,11 @@ export const InboxPage: React.FC = () => {
           </div>
         </div>
 
-        <ViewModeToggle mode={viewMode} onChange={setViewMode} />
+        <ViewModeToggle mode={effectiveViewMode} onChange={setViewMode} hideFocus={isMobile} />
       </div>
 
       {/* Views */}
-      {viewMode === 'overview' ? (
+      {effectiveViewMode === 'overview' ? (
         <InboxOverviewView
           overdueActivities={overdueActivities}
           todayMeetings={todayMeetings}
@@ -95,7 +104,8 @@ export const InboxPage: React.FC = () => {
           }}
           onStartFocus={() => {
             setFocusIndex(0);
-            setViewMode('focus');
+            // Sem modo Foco no mobile: o CTA leva para a Lista.
+            setViewMode(isMobile ? 'list' : 'focus');
           }}
           onAcceptSuggestion={handleAcceptSuggestion}
 
@@ -110,7 +120,7 @@ export const InboxPage: React.FC = () => {
             setViewMode('list');
           }}
         />
-      ) : viewMode === 'list' ? (
+      ) : effectiveViewMode === 'list' ? (
         <InboxListView
           overdueActivities={overdueActivities}
           todayMeetings={todayMeetings}
@@ -126,6 +136,7 @@ export const InboxPage: React.FC = () => {
           suggestionsDefaultOpen={listDefaults.suggestionsDefaultOpen}
           suggestionsDefaultShowAll={listDefaults.suggestionsDefaultShowAll}
           onSelectActivity={(id) => {
+            if (isMobile) return;
             const index = focusQueue.findIndex(item => item.id === id);
             if (index !== -1) {
               setFocusIndex(index);

@@ -18,9 +18,11 @@ export interface FullscreenSheetProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   className?: string;
+  /** Classes do corpo rolável. Use `p-0` quando o filho controla o próprio scroll. */
+  bodyClassName?: string;
 }
 
-export function FullscreenSheet({ isOpen, onClose, title, children, footer, className }: FullscreenSheetProps) {
+export function FullscreenSheet({ isOpen, onClose, title, children, footer, className, bodyClassName }: FullscreenSheetProps) {
   return (
     <Sheet
       isOpen={isOpen}
@@ -43,7 +45,7 @@ export function FullscreenSheet({ isOpen, onClose, title, children, footer, clas
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-auto px-4 py-4">{children}</div>
+        <div className={cn('min-h-0 flex-1 overflow-auto px-4 py-4', bodyClassName)}>{children}</div>
 
         {footer ? (
           <div className="shrink-0 border-t border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card px-4 py-3">

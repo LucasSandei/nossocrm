@@ -3,6 +3,7 @@ import { Building2, Mail, Phone, Plus, Calendar, Pencil, Trash2, Globe, MoreHori
 import { Contact, Company, ContactSortableColumn } from '@/types';
 import { StageBadge } from './ContactsStageTabs';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { useResponsiveMode } from '@/hooks/useResponsiveMode';
 
 // Performance: reuse Intl formatters (they are relatively expensive to instantiate).
 const PT_BR_DATE_FORMATTER = new Intl.DateTimeFormat('pt-BR');
@@ -187,7 +188,145 @@ export const ContactsList: React.FC<ContactsListProps> = ({
     // Memoized para evitar hydration mismatch (server vs client timestamp) e
     // evitar recriação a cada render
     const now = React.useMemo(() => new Date(), []);
-    
+
+    const { mode } = useResponsiveMode();
+    const isMobile = mode === 'mobile';
+
+    /**
+     * Mobile: tabela de 9 colunas vira lista de cards.
+     *
+     * Com scroll horizontal o usuário só vê nome e checkbox; telefone, e-mail e
+     * ações ficam fora da tela. O card mostra o mesmo conteúdo empilhado, e
+     * e-mail/telefone viram links (`mailto:`/`tel:`) porque no celular a ação
+     * óbvia sobre um contato é ligar ou escrever.
+     */
+    if (isMobile && viewMode === 'people') {
+        if (filteredContacts.length === 0) {
+            return (
+                <div className="glass rounded-xl border border-slate-200 dark:border-white/5 shadow-sm">
+                    <EmptyState
+                        icon={Users}
+                        title="Nenhum contato encontrado"
+                        description="Tente ajustar os filtros ou adicione um novo contato."
+                        action={onAddContact ? { label: 'Adicionar Contato', onClick: onAddContact } : undefined}
+                    />
+                </div>
+            );
+        }
+
+        return (
+            <ul className="space-y-2">
+                {filteredContacts.map((contact) => {
+                    const isSelected = selectedIds.has(contact.id);
+
+                    return (
+                        <li
+                            key={contact.id}
+                            className={`glass rounded-xl border p-3 shadow-sm transition-colors ${
+                                isSelected
+                                    ? 'border-primary-300 bg-primary-50/50 dark:border-primary-700/50 dark:bg-primary-900/10'
+                                    : 'border-slate-200 dark:border-white/5'
+                            }`}
+                        >
+                            <div className="flex items-start gap-3">
+                                <label className="flex min-h-[44px] min-w-[24px] items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => toggleSelect(contact.id)}
+                                        aria-label={`Selecionar ${contact.name}`}
+                                        className="h-5 w-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500 dark:border-white/10 dark:bg-white/5"
+                                    />
+                                </label>
+
+                                <button
+                                    type="button"
+                                    onClick={() => openEditModal(contact)}
+                                    className="min-w-0 flex-1 text-left"
+                                    aria-label={`Editar contato: ${contact.name || 'Sem nome'}`}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <span className="truncate font-semibold text-slate-900 dark:text-white">
+                                            {contact.name}
+                                        </span>
+                                        {duplicateContactIds?.has(contact.id) && (
+                                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-500/10 dark:text-amber-400">
+                                                <GitMerge size={10} />
+                                                Duplicado
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                                        <Building2 size={10} className="shrink-0" />
+                                        <span className="truncate">
+                                            {contact.role ? `${contact.role} · ` : ''}
+                                            {getCompanyName(contact.clientCompanyId)}
+                                        </span>
+                                    </div>
+                                </button>
+
+                                <StageBadge stage={contact.stage} />
+                            </div>
+
+                            {contact.tags && contact.tags.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-1 pl-9">
+                                    {contact.tags.map((tag) => (
+                                        <span
+                                            key={tag}
+                                            className="rounded-full bg-primary-50 px-1.5 py-0.5 text-[10px] text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                                        >
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* Ações rápidas: ligar, escrever, criar oportunidade */}
+                            <div className="mt-3 flex items-center gap-2 pl-9">
+                                {contact.phone ? (
+                                    <a
+                                        href={`tel:${contact.phone}`}
+                                        className="flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 active:bg-slate-100 dark:border-white/10 dark:text-slate-200 dark:active:bg-white/5"
+                                    >
+                                        <Phone size={14} /> Ligar
+                                    </a>
+                                ) : null}
+                                {contact.email ? (
+                                    <a
+                                        href={`mailto:${contact.email}`}
+                                        className="flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 text-xs font-medium text-slate-700 active:bg-slate-100 dark:border-white/10 dark:text-slate-200 dark:active:bg-white/5"
+                                    >
+                                        <Mail size={14} /> E-mail
+                                    </a>
+                                ) : null}
+                                <button
+                                    type="button"
+                                    onClick={() => convertContactToDeal(contact.id)}
+                                    aria-label={`Criar oportunidade para ${contact.name}`}
+                                    className="flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-lg border border-primary-200 bg-primary-50 text-xs font-medium text-primary-700 active:bg-primary-100 dark:border-primary-800/50 dark:bg-primary-900/30 dark:text-primary-300"
+                                >
+                                    <Plus size={14} /> Negócio
+                                </button>
+                            </div>
+
+                            <div className="mt-2 flex items-center justify-between pl-9 text-[11px] text-slate-400 dark:text-slate-500">
+                                <span>Modificado {formatRelativeDate(contact.updatedAt, now).toLowerCase()}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setDeleteId(contact.id)}
+                                    aria-label={`Excluir ${contact.name}`}
+                                    className="touch-target flex items-center justify-center rounded-lg text-slate-400 active:bg-red-50 active:text-red-500 dark:active:bg-red-900/20"
+                                >
+                                    <Trash2 size={16} aria-hidden="true" />
+                                </button>
+                            </div>
+                        </li>
+                    );
+                })}
+            </ul>
+        );
+    }
+
     return (
         <div className="glass rounded-xl border border-slate-200 dark:border-white/5 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
