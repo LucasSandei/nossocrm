@@ -199,7 +199,7 @@ export function MessagingPage({ initialConversationId }: MessagingPageProps = {}
       className={cn(
         'flex',
         isMobile
-          ? 'h-[calc(100dvh-3.5rem-var(--app-bottom-nav-height,0px)-var(--app-safe-area-bottom,0px))]'
+          ? 'h-[calc(100dvh-3.5rem-var(--app-safe-area-top,0px)-var(--app-bottom-nav-height,0px)-var(--app-safe-area-bottom,0px))]'
           : 'h-[calc(100vh-4rem)]'
       )}
     >
@@ -217,7 +217,7 @@ export function MessagingPage({ initialConversationId }: MessagingPageProps = {}
         className={cn(
           'flex flex-col bg-slate-50 dark:bg-slate-900/50',
           isThreadFullscreen
-            ? 'fixed inset-0 z-[60] pb-[var(--app-safe-area-bottom,0px)]'
+            ? 'fixed inset-0 z-[60] pt-[var(--app-safe-area-top,0px)] pb-[var(--app-safe-area-bottom,0px)]'
             : 'flex-1',
           isMobile && !isThreadFullscreen && 'hidden'
         )}

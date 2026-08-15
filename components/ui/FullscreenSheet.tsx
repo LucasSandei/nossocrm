@@ -31,7 +31,9 @@ export function FullscreenSheet({ isOpen, onClose, title, children, footer, clas
       className={cn('h-[100dvh] rounded-none', className)}
     >
       <div className="flex h-[100dvh] flex-col">
-        <div className="shrink-0 border-b border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card">
+        {/* pt da safe area: o sheet cobre a viewport inteira, inclusive a faixa
+          * da barra de status quando o app roda como PWA. */}
+        <div className="shrink-0 border-b border-slate-200 dark:border-white/10 bg-white dark:bg-dark-card pt-[var(--app-safe-area-top,0px)]">
           <div className="flex items-center justify-between gap-3 px-4 py-3">
             <div className="min-w-0 text-sm font-semibold text-slate-900 dark:text-white truncate">{title}</div>
             <button
