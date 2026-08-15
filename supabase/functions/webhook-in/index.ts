@@ -34,6 +34,7 @@ import {
   getAttribution,
   sameText,
   camposParaPreencher,
+  deveReencaminhar,
   sanitizeCustomFields,
   type Attribution,
   type FieldDefinition,
@@ -449,18 +450,91 @@ Deno.serve(async (req) => {
           await preencherCamposDoContato(existingEvent.created_contact_id as string);
         }
 
+        /*
+         * Reencaminhamento: a entrega final sabe mais que a parcial.
+         *
+         * A parcial chega na terceira pergunta, antes de existir qualquer
+         * classificação, então uma regra que depende dela nunca casa e o lead
+         * cai no destino genérico. A final é a primeira que consegue avaliar
+         * "tem vaginismo e está pronta para comprar" — e sem mover o card, o
+         * lead prioritário ficava para sempre no funil errado.
+         *
+         * Move só card aberto. Ganho ou perdido já teve desfecho, e arrastá-lo
+         * apagaria o trabalho de quem o fechou.
+         */
+        const { data: atual } = await supabase
+          .from("deals")
+          .select("id, board_id, stage_id, owner_id, is_won, is_lost")
+          .eq("id", existingEvent.created_deal_id as string)
+          .maybeSingle();
+
+        let movido: { de: string; para: string } | null = null;
+
+        if (deveReencaminhar(atual, targetBoardId)) {
+          const mudanca: Record<string, unknown> = {
+            board_id: targetBoardId,
+            stage_id: targetStageId,
+            last_stage_change_date: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            custom_fields: {
+              ...inboundMetadata,
+              inbound_rerouted_from: atual.board_id,
+            },
+          };
+          // Dono continua sendo preenchido, nunca sobrescrito.
+          if (targetOwnerId && !atual.owner_id) mudanca.owner_id = targetOwnerId;
+
+          const { error: moveErr } = await supabase
+            .from("deals")
+            .update(mudanca)
+            .eq("id", atual.id);
+
+          if (moveErr) console.error("[webhook-in] falha ao reencaminhar deal:", moveErr.message);
+          else movido = { de: atual.board_id as string, para: targetBoardId };
+        }
+
         return json(200, {
           ok: true,
           duplicate: true,
-          message: "Recebido! Esse envio já tinha sido processado (não duplicamos nada).",
+          message: movido
+            ? "Recebido! O negócio foi movido para o funil que a classificação indica."
+            : "Recebido! Esse envio já tinha sido processado (não duplicamos nada).",
           organization_id: source.organization_id,
           contact_id: existingEvent.created_contact_id ?? null,
           deal_id: existingEvent.created_deal_id,
           custom_fields: leadCustomFields,
+          rerouted: movido,
+          routing: {
+            rule_id: appliedRule?.id ?? null,
+            rule_name: appliedRule?.name ?? null,
+            matched: appliedRule !== null,
+            board_id: targetBoardId,
+            stage_id: targetStageId,
+          },
           status: existingEvent.status ?? "processed",
         });
       }
-      // se ainda não tem IDs gravados, seguimos o fluxo (best-effort)
+
+      /*
+       * Evento repetido cujo card ainda não foi gravado: a primeira entrega
+       * está em voo neste exato momento.
+       *
+       * Seguir em frente aqui é o que criava dois cards para o mesmo lead —
+       * as duas chamadas olham o funil de destino, nenhuma acha negócio, e
+       * cada uma cria o seu. Devolver sem criar nada é seguro: se a primeira
+       * falhar, ela volta 500 e a fila retenta.
+       */
+      if (!existingEventErr && existingEvent) {
+        return json(200, {
+          ok: true,
+          duplicate: true,
+          in_progress: true,
+          message: "Recebido! Este envio já está sendo processado.",
+          organization_id: source.organization_id,
+          contact_id: existingEvent.created_contact_id ?? null,
+          deal_id: null,
+        });
+      }
     }
   }
 

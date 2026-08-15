@@ -145,6 +145,33 @@ export function camposParaPreencher(
   return Object.keys(novos).length > 0 ? { ...atuais, ...novos } : null;
 }
 
+/** O que se sabe de um negócio já existente na hora de decidir se ele muda de funil. */
+export type NegocioExistente = {
+  board_id: string | null;
+  is_won?: boolean | null;
+  is_lost?: boolean | null;
+};
+
+/**
+ * Se o negócio deve mudar de funil quando uma entrega mais rica chega.
+ *
+ * A entrega parcial dispara na terceira pergunta, antes de existir qualquer
+ * classificação, então regra que dependa dela não casa e o lead vai para o
+ * destino genérico. A entrega final é a primeira que consegue avaliar o lead
+ * inteiro. Sem mover, o prioritário ficaria para sempre no funil errado.
+ *
+ * Card ganho ou perdido não se mexe: já teve desfecho, e arrastá-lo apagaria o
+ * trabalho de quem o fechou.
+ */
+export function deveReencaminhar(
+  atual: NegocioExistente | null,
+  destino: string | null,
+): boolean {
+  if (!atual || !destino) return false;
+  if (atual.is_won || atual.is_lost) return false;
+  return atual.board_id !== destino;
+}
+
 export type RoutingRule = {
   id: string;
   name: string;

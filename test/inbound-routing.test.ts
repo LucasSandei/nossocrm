@@ -5,6 +5,7 @@ import {
   findMatchingRule,
   getAttribution,
   camposParaPreencher,
+  deveReencaminhar,
   sanitizeCustomFields,
   type FieldDefinition,
   type RoutingRule,
@@ -375,5 +376,36 @@ describe('condições sobre campos personalizados', () => {
     // Sem a classificação, cai na genérica em vez de forçar o funil de vendas.
     expect(findMatchingRule(regras, {}, { possui_vaginismo: 'true' })?.id).toBe('resto');
     expect(findMatchingRule(regras, {})?.id).toBe('resto');
+  });
+});
+
+/**
+ * Reencaminhamento quando a entrega final sabe mais que a parcial.
+ *
+ * A parcial dispara na terceira pergunta, antes de existir classificação, e o
+ * lead vai para o destino genérico. Sem mover o card na entrega final, o lead
+ * prioritário ficava para sempre no funil errado — e era exatamente o medo de
+ * "ir para dois lugares", só que pior: ia para o lugar errado e ficava.
+ */
+describe('deveReencaminhar', () => {
+  const ABERTO = { board_id: 'jessica', is_won: false, is_lost: false };
+
+  it('move quando o funil que a classificação indica é outro', () => {
+    expect(deveReencaminhar(ABERTO, 'acompanhamento')).toBe(true);
+  });
+
+  it('não move quando já está no funil certo', () => {
+    expect(deveReencaminhar(ABERTO, 'jessica')).toBe(false);
+  });
+
+  // Card fechado já teve desfecho: arrastá-lo apagaria o trabalho de quem fechou.
+  it('não move card ganho nem perdido', () => {
+    expect(deveReencaminhar({ ...ABERTO, is_won: true }, 'acompanhamento')).toBe(false);
+    expect(deveReencaminhar({ ...ABERTO, is_lost: true }, 'acompanhamento')).toBe(false);
+  });
+
+  it('sem card ou sem destino, não faz nada', () => {
+    expect(deveReencaminhar(null, 'acompanhamento')).toBe(false);
+    expect(deveReencaminhar(ABERTO, null)).toBe(false);
   });
 });
