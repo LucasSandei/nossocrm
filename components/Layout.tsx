@@ -489,8 +489,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             * Mobile: só o essencial (título, IA, notificações). Tema e debug
             * migram para o menu "Mais". Cabeçalho cheio de ícones de 32px
             * é o que mais gera toque errado no celular. */}
+          {/* A altura no mobile soma a safe area do topo: com `viewportFit:
+            * cover` o app ocupa a faixa da barra de status (relogio, bateria),
+            * e sem esse padding o titulo fica embaixo dela quando instalado
+            * como PWA. */}
           <header
-            className="h-14 sm:h-16 glass border-b border-[var(--color-border-subtle)] flex items-center justify-between px-4 sm:px-6 z-40 shrink-0"
+            className="h-[calc(3.5rem+var(--app-safe-area-top,0px))] pt-[var(--app-safe-area-top,0px)] sm:h-16 sm:pt-0 glass border-b border-[var(--color-border-subtle)] flex items-center justify-between px-4 sm:px-6 z-40 shrink-0"
             role="banner"
           >
             <h1 className="text-base sm:text-lg font-semibold font-display text-slate-900 dark:text-white truncate">

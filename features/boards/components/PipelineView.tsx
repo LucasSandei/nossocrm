@@ -13,6 +13,7 @@ import { DealView, Board, BoardStage } from '@/types';
 import { ExportTemplateModal } from './Modals/ExportTemplateModal';
 import { useAuth } from '@/context/AuthContext';
 import PageLoader from '@/components/PageLoader';
+import { useResponsiveMode } from '@/hooks/useResponsiveMode';
 
 interface PipelineViewProps {
   // Boards
@@ -242,6 +243,8 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
   const { profile } = useAuth();
   const isAdmin = profile?.role === 'admin';
   const [isExportModalOpen, setIsExportModalOpen] = React.useState(false);
+  const { mode: responsiveMode } = useResponsiveMode();
+  const isMobile = responsiveMode === 'mobile';
 
   const handleUpdateStage = (updatedStage: BoardStage) => {
     if (!activeBoard) return;
@@ -324,7 +327,12 @@ export const PipelineView: React.FC<PipelineViewProps> = ({
             onNewDeal={() => setIsCreateModalOpen(true)}
           />
 
-          <BoardStrategyHeader board={activeBoard} />
+          {/* Objetivo / agente / entrada do board.
+            * Ocupa cerca de 400px de altura e, no celular, empurra os cards
+            * inteiros para baixo da dobra: o usuario abre o board e nao ve
+            * negocio nenhum. E contexto de leitura, nao de operacao, entao
+            * fica so no desktop. */}
+          {!isMobile && <BoardStrategyHeader board={activeBoard} />}
 
           <div className="flex-1 overflow-hidden">
             {viewMode === 'kanban' ? (
