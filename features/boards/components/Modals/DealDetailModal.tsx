@@ -33,6 +33,7 @@ import {
   generateObjectionResponse,
 } from '@/lib/ai/tasksClient';
 import {
+  ArrowLeft,
   BrainCircuit,
   Mail,
   Phone,
@@ -480,14 +481,51 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
     <div
       className={
         isMobile
-          ? 'bg-white dark:bg-dark-card border border-slate-200 dark:border-white/10 w-full h-[100dvh] flex flex-col overflow-hidden pb-[var(--app-safe-area-bottom,0px)]'
+          ? 'bg-white dark:bg-dark-card border border-slate-200 dark:border-white/10 w-full h-[100dvh] flex flex-col overflow-hidden pt-[var(--app-safe-area-top,0px)] pb-[var(--app-safe-area-bottom,0px)]'
           : 'bg-white dark:bg-dark-card border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200'
       }
     >
+          {/* BARRA SUPERIOR (mobile).
+            * O cabecalho abaixo poe titulo e cinco controles na mesma linha; em
+            * 375px o "X" de fechar era espremido para fora da tela e nao havia
+            * como sair do card. Aqui o "Voltar" fica sozinho na esquerda, com
+            * alvo de toque proprio, e as acoes secundarias vao para a direita. */}
+          {isMobile && (
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-2 dark:border-white/10 dark:bg-dark-card">
+              <button
+                type="button"
+                onClick={onClose}
+                className="touch-target flex items-center gap-1 rounded-lg px-2 text-sm font-medium text-slate-700 active:bg-slate-100 dark:text-slate-200 dark:active:bg-white/5"
+              >
+                <ArrowLeft size={20} aria-hidden="true" />
+                Voltar
+              </button>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setShowBriefingDrawer(true)}
+                  aria-label="Preparar conversa com este lead"
+                  className="touch-target flex items-center justify-center rounded-lg text-primary-600 active:bg-primary-50 dark:text-primary-400 dark:active:bg-primary-900/30"
+                >
+                  <FileText size={20} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeleteId(deal.id)}
+                  aria-label="Excluir negocio"
+                  className="touch-target flex items-center justify-center rounded-lg text-slate-400 active:bg-red-50 active:text-red-500 dark:active:bg-red-900/20"
+                >
+                  <Trash2 size={20} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* HEADER (Stage Bar + Won/Lost) */}
-          <div className="bg-slate-50 dark:bg-black/20 border-b border-slate-200 dark:border-white/10 p-6 shrink-0">
-            <div className="flex justify-between items-start mb-6">
-              <div className="flex-1 mr-8">
+          <div className="bg-slate-50 dark:bg-black/20 border-b border-slate-200 dark:border-white/10 p-4 sm:p-6 shrink-0">
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start mb-4 sm:mb-6">
+              <div className="flex-1 sm:mr-8">
                 {isEditingTitle ? (
                   <div className="flex gap-2 mb-1">
                     <input
@@ -547,7 +585,7 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                   </p>
                 )}
               </div>
-              <div className="flex gap-3 items-center">
+              <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
                 {/* Se fechado: mostra badge + botão Reabrir */}
                 {(deal.isWon || deal.isLost) ? (
                   <>
@@ -661,30 +699,37 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                     </button>
                   </>
                 )}
-                <button
-                  onClick={() => setShowBriefingDrawer(true)}
-                  className="ml-2 px-3 py-1.5 bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-500/30 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
-                  title="Preparar para a conversa com este lead"
-                  aria-label="Preparar conversa com este lead"
-                >
-                  <FileText size={14} aria-hidden="true" />
-                  <span className="hidden sm:inline">Preparar</span>
-                </button>
-                <button
-                  onClick={() => setDeleteId(deal.id)}
-                  className="ml-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
-                  title="Excluir Negócio"
-                  aria-label="Excluir negócio"
-                >
-                  <Trash2 size={24} aria-hidden="true" />
-                </button>
-                <button
-                  onClick={onClose}
-                  className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-white"
-                  aria-label="Fechar modal"
-                >
-                  <X size={24} aria-hidden="true" />
-                </button>
+                {/* No mobile estes tres vivem na barra superior (Voltar /
+                  * Preparar / Excluir), senao disputariam a mesma linha do
+                  * titulo e o fechar sairia da tela. */}
+                {!isMobile && (
+                  <>
+                    <button
+                      onClick={() => setShowBriefingDrawer(true)}
+                      className="ml-2 px-3 py-1.5 bg-primary-100 dark:bg-primary-500/20 text-primary-700 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-500/30 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
+                      title="Preparar para a conversa com este lead"
+                      aria-label="Preparar conversa com este lead"
+                    >
+                      <FileText size={14} aria-hidden="true" />
+                      <span className="hidden sm:inline">Preparar</span>
+                    </button>
+                    <button
+                      onClick={() => setDeleteId(deal.id)}
+                      className="ml-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                      title="Excluir Negócio"
+                      aria-label="Excluir negócio"
+                    >
+                      <Trash2 size={24} aria-hidden="true" />
+                    </button>
+                    <button
+                      onClick={onClose}
+                      className="ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+                      aria-label="Fechar modal"
+                    >
+                      <X size={24} aria-hidden="true" />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -719,9 +764,9 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
             )}
           </div>
 
-          <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
+          <div className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden min-h-0">
             {/* Left Sidebar (Static Info + Custom Fields) */}
-            <div className="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-slate-200 dark:border-white/5 p-4 sm:p-6 overflow-y-auto bg-white dark:bg-dark-card max-h-[38vh] md:max-h-none">
+            <div className="w-full md:w-1/3 border-b md:border-b-0 md:border-r border-slate-200 dark:border-white/5 p-4 sm:p-6 md:overflow-y-auto bg-white dark:bg-dark-card md:max-h-none">
               <div className="space-y-6">
                 <div>
                   <h3 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2">
@@ -971,44 +1016,45 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
 
             {/* Right Content (Tabs & Timeline) */}
             <div className="flex-1 min-h-0 flex flex-col bg-white dark:bg-dark-card">
-              <div className="h-14 border-b border-slate-200 dark:border-white/5 flex items-center px-6 shrink-0">
-                <div className="flex gap-6">
+              {/* Cinco abas nao cabem em 375px: viram trilho rolavel. */}
+              <div className="h-14 border-b border-slate-200 dark:border-white/5 flex items-center px-4 sm:px-6 shrink-0 overflow-x-auto mobile-scroll-x">
+                <div className="flex shrink-0 gap-4 sm:gap-6">
                   <button
                     onClick={() => setActiveTab('timeline')}
-                    className={`text-sm font-bold h-14 border-b-2 transition-colors ${activeTab === 'timeline' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
+                    className={`text-sm font-bold h-14 shrink-0 whitespace-nowrap border-b-2 transition-colors ${activeTab === 'timeline' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
                   >
                     Timeline
                   </button>
                   <button
                     onClick={() => setActiveTab('tasks')}
-                    className={`text-sm font-bold h-14 border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'tasks' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
+                    className={`text-sm font-bold h-14 shrink-0 whitespace-nowrap border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'tasks' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
                   >
                     <ListTodo size={14} aria-hidden="true" />
                     Tarefas
                   </button>
                   <button
                     onClick={() => setActiveTab('forms')}
-                    className={`text-sm font-bold h-14 border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'forms' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
+                    className={`text-sm font-bold h-14 shrink-0 whitespace-nowrap border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'forms' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
                   >
                     <ClipboardList size={14} aria-hidden="true" />
                     Formulários
                   </button>
                   <button
                     onClick={() => setActiveTab('products')}
-                    className={`text-sm font-bold h-14 border-b-2 transition-colors ${activeTab === 'products' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
+                    className={`text-sm font-bold h-14 shrink-0 whitespace-nowrap border-b-2 transition-colors ${activeTab === 'products' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
                   >
                     Produtos
                   </button>
                   <button
                     onClick={() => setActiveTab('info')}
-                    className={`text-sm font-bold h-14 border-b-2 transition-colors ${activeTab === 'info' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
+                    className={`text-sm font-bold h-14 shrink-0 whitespace-nowrap border-b-2 transition-colors ${activeTab === 'info' ? 'border-primary-500 text-primary-600 dark:text-white' : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-white'}`}
                   >
                     IA Insights
                   </button>
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6 bg-slate-50/30 dark:bg-black/10">
+              <div className="flex-1 md:overflow-y-auto p-4 sm:p-6 bg-slate-50/30 dark:bg-black/10">
                 {activeTab === 'timeline' && (
                   <div className="space-y-6">
                     <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl p-4 shadow-sm">
