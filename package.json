@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:db": "node test/run-db-tests.mjs",
     "smoke:integrations": "node scripts/smoke-integrations.mjs",
     "release:prepare": "node scripts/release.mjs prepare",
     "release:draft": "node scripts/release.mjs draft",

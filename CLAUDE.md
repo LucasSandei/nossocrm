@@ -10,7 +10,8 @@ npm run build        # Build de produção
 npm run lint         # ESLint com zero warnings
 npm run typecheck    # TypeScript (tsc --noEmit)
 npm run test         # Vitest em watch mode
-npm run test:run     # Vitest single run
+npm run test:run     # Vitest single run (não toca no banco)
+npm run test:db      # Testes de integração que ESCREVEM num Supabase real
 npm run precheck     # lint + typecheck + test:run + build (pré-PR)
 npm run precheck:fast # lint + typecheck + test:run (sem build)
 npm run stories      # Rodar test/stories/ (testes de comportamento)
@@ -171,6 +172,14 @@ Controladas por `instanceFlags` (operador) via `queryKeys.instanceFlags.byOrg(or
 - Testes de integração/agent: diretamente em `test/`
 - Setup: `test/setup.ts` (carrega `.env.local`, mock `server-only`) + `test/setup.dom.ts` (jest-dom, polyfills)
 - Ambiente padrão: `happy-dom` (todos os testes rodam com DOM)
+
+**Testes que escrevem no banco**: `test/tools.salesTeamMatrix.test.ts` e
+`test/tools.multiTenant.test.ts` criam boards, contatos e negócios de verdade e
+apagam no `afterAll`. Como `.env.local` costuma apontar para o mesmo projeto
+Supabase da produção, eles ficam desligados por padrão: só rodam com
+`RUN_DB_TESTS=1` (use `npm run test:db`). Ter credencial não basta — ver
+`test/helpers/dbIntegration.ts`. Motivo: um teste que morre no meio (timeout,
+queda de rede) pula a limpeza e deixa dado de teste visível no CRM.
 
 ### Migrations
 
