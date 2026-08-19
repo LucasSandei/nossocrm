@@ -1,4 +1,5 @@
 import { describe, it, expect, afterAll } from 'vitest';
+import { describeDbIntegration } from './helpers/dbIntegration';
 import { createCRMTools } from '../lib/ai/tools';
 import { loadEnvFile } from './helpers/env';
 import {
@@ -35,7 +36,10 @@ const hasRealSupabaseCreds =
   !serviceRoleKey.startsWith('your_') &&
   !serviceRoleKey.startsWith('sb_secret_your_');
 
-const describeSupabase = hasRealSupabaseCreds ? describe : describe.skip;
+// Ter credencial nao basta: `.env.local` aponta para o mesmo Supabase da
+// producao, entao esta suite so roda com opt-in explicito. Ver
+// `describeDbIntegration` e `npm run test:db`.
+const describeSupabase = describeDbIntegration(hasRealSupabaseCreds);
 
 type ToolMap = Record<string, { execute: (input: unknown) => unknown | Promise<unknown> }>;
 
