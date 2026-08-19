@@ -22,11 +22,12 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import { ConfirmDialog as ConfirmModal } from '@/components/ui/confirm-dialog';
 import { LossReasonModal } from '@/components/ui/LossReasonModal';
-import { useMoveDealSimple, useDealApproval } from '@/lib/query/hooks';
+import { useMoveDealSimple, useDealApproval, useMoveDealToBoard } from '@/lib/query/hooks';
 import { FocusTrap, useFocusReturn } from '@/lib/a11y';
 import { Activity } from '@/types';
 import { useResponsiveMode } from '@/hooks/useResponsiveMode';
 import { DealSheet } from '../DealSheet';
+import { MoveToBoardModal } from './MoveToBoardModal';
 import {
   analyzeLead,
   generateEmailDraft,
@@ -34,6 +35,7 @@ import {
 } from '@/lib/ai/tasksClient';
 import {
   ArrowLeft,
+  FolderInput,
   BrainCircuit,
   Mail,
   Phone,
@@ -179,6 +181,10 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
 
   // Use unified TanStack Query hook for moving deals
   const { moveDeal } = useMoveDealSimple(dealBoard, lifecycleStages);
+
+  // Troca de funil: o negocio estava no pipeline errado.
+  const [showMoveBoardModal, setShowMoveBoardModal] = useState(false);
+  const moveDealToBoard = useMoveDealToBoard();
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingValue, setIsEditingValue] = useState(false);
@@ -732,6 +738,28 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
                 )}
               </div>
             </div>
+
+            {/* Funil atual + troca. A barra de etapas abaixo so anda dentro do
+              * funil; quando o negocio entrou no pipeline errado, o caminho e
+              * este. Os destinos vem de `boards`, ja filtrado pela RLS. */}
+            {dealBoard && (
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                <span className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                  Funil
+                </span>
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  {dealBoard.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowMoveBoardModal(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:border-primary-300 hover:text-primary-600 dark:border-white/10 dark:text-slate-300 dark:hover:border-primary-500/50 dark:hover:text-primary-400"
+                >
+                  <FolderInput size={13} aria-hidden="true" />
+                  Mudar de funil
+                </button>
+              </div>
+            )}
 
             {dealBoard ? (
               <StageProgressBar
@@ -1497,6 +1525,33 @@ export const DealDetailModal: React.FC<DealDetailModalProps> = ({ dealId, isOpen
           dealTitle={deal.title}
           isOpen={showBriefingDrawer}
           onClose={() => setShowBriefingDrawer(false)}
+        />
+
+        <MoveToBoardModal
+          isOpen={showMoveBoardModal}
+          onClose={() => setShowMoveBoardModal(false)}
+          deal={deal}
+          boards={boards}
+          currentBoardId={deal.boardId}
+          isMoving={moveDealToBoard.isPending}
+          onMove={({ boardId, stageId }) => {
+            moveDealToBoard.mutate(
+              { dealId: deal.id, boardId, stageId },
+              {
+                onSuccess: () => {
+                  const destino = boards.find((b) => b.id === boardId);
+                  const coluna = destino?.stages.find((st) => st.id === stageId);
+                  addToast(
+                    `Negócio movido para "${destino?.name ?? 'outro funil'}${coluna ? ` › ${coluna.label}` : ''}".`,
+                    'success'
+                  );
+                  setShowMoveBoardModal(false);
+                },
+                onError: (e) =>
+                  addToast(`Erro ao mudar de funil: ${(e as Error).message}`, 'error'),
+              }
+            );
+          }}
         />
     </>
   );

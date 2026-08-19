@@ -51,6 +51,26 @@ async function getCurrentOrganizationId(): Promise<string | null> {
 // ============================================
 
 /**
+ * Onde um negocio esta no funil, com os nomes ja resolvidos.
+ *
+ * Serve a aba Contatos: ao abrir um contato o usuario precisa saber em que
+ * pipeline e coluna aquele lead esta, sem ter que caçar board por board.
+ */
+export interface DealPipelinePosition {
+  dealId: string;
+  title: string;
+  value: number;
+  isWon: boolean;
+  isLost: boolean;
+  boardId: string;
+  boardName: string;
+  stageId: string;
+  stageLabel: string;
+  /** Classe Tailwind da coluna (ex.: `bg-blue-500`), como em BoardStage. */
+  stageColor: string | null;
+}
+
+/**
  * Representação de deal no banco de dados.
  * 
  * @interface DbDeal
@@ -678,6 +698,116 @@ export const dealsService = {
       return { movedCount: aMover.length, alreadyThereCount, withoutDealCount, error: null };
     } catch (e) {
       return { ...vazio, error: e as Error };
+    }
+  },
+
+  /**
+   * Em que funil e coluna um contato esta, com o estado de cada negocio.
+   *
+   * Consulta enxuta de proposito: a alternativa seria carregar a view completa
+   * de negocios so para achar os do contato, o que puxa a base inteira quando
+   * o usuario abre um contato na aba Contatos.
+   *
+   * A RLS filtra por funil visivel, entao alguem sem acesso a um pipeline nao
+   * descobre por aqui que o contato esta la dentro.
+   */
+  async getPipelinePositionsByContact(contactId: string): Promise<DealPipelinePosition[]> {
+    if (!supabase) return [];
+
+    const id = sanitizeUUID(contactId);
+    if (!id) return [];
+
+    const { data, error } = await supabase
+      .from('deals')
+      .select('id, title, value, is_won, is_lost, board_id, stage_id, boards(name), board_stages(name, label, color)')
+      .eq('contact_id', id)
+      .is('deleted_at', null)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+
+    // PostgREST tipa relacao aninhada como array; em FK simples vem objeto.
+    return ((data ?? []) as unknown as Array<{
+      id: string;
+      title: string | null;
+      value: number | string | null;
+      is_won: boolean | null;
+      is_lost: boolean | null;
+      board_id: string | null;
+      stage_id: string | null;
+      boards: { name: string | null } | null;
+      board_stages: { name: string | null; label: string | null; color: string | null } | null;
+    }>).map((row) => ({
+      dealId: row.id,
+      title: row.title ?? 'Negócio sem título',
+      value: Number(row.value ?? 0),
+      isWon: !!row.is_won,
+      isLost: !!row.is_lost,
+      boardId: row.board_id ?? '',
+      boardName: row.boards?.name ?? 'Funil removido',
+      stageId: row.stage_id ?? '',
+      stageLabel: row.board_stages?.label || row.board_stages?.name || 'Sem coluna',
+      stageColor: row.board_stages?.color ?? null,
+    }));
+  },
+
+  /**
+   * Move um negocio para outro funil (board), escolhendo a coluna de destino.
+   *
+   * Diferente de `moveStage`, que anda dentro do mesmo board: aqui muda o
+   * `board_id`, entao a coluna precisa obrigatoriamente pertencer ao board de
+   * destino. Um card apontando para coluna de outro funil simplesmente some da
+   * tela, sem erro nenhum.
+   *
+   * Quem pode mover para onde e decidido pela RLS: o seletor da interface e
+   * alimentado por `boards`, que ja devolve so os funis visiveis ao usuario
+   * (ver migration de board_visibility). Aqui revalidamos a coluna pelo banco,
+   * entao mesmo uma chamada forjada nao consegue mandar o negocio para um
+   * funil que a pessoa nao enxerga.
+   */
+  async moveToBoard(input: {
+    dealId: string;
+    boardId: string;
+    stageId: string;
+  }): Promise<{ error: Error | null }> {
+    try {
+      if (!supabase) return { error: new Error('Supabase não configurado') };
+
+      const dealId = sanitizeUUID(input.dealId);
+      const boardId = sanitizeUUID(input.boardId);
+      const stageId = sanitizeUUID(input.stageId);
+      if (!dealId) return { error: new Error('Negócio inválido') };
+      if (!boardId) return { error: new Error('Funil inválido') };
+      if (!stageId) return { error: new Error('Coluna inválida') };
+
+      // A leitura passa pela RLS: se o usuário não enxerga o board de destino,
+      // a coluna não aparece e o move é recusado.
+      const { data: stage, error: stageError } = await supabase
+        .from('board_stages')
+        .select('id, board_id')
+        .eq('id', stageId)
+        .maybeSingle();
+      if (stageError) return { error: stageError as Error };
+      if (!stage) return { error: new Error('Coluna não encontrada ou sem acesso a este funil') };
+      if (stage.board_id !== boardId) {
+        return { error: new Error('A coluna não pertence ao funil escolhido') };
+      }
+
+      const agora = new Date().toISOString();
+      const { error: updateError } = await supabase
+        .from('deals')
+        .update({
+          board_id: boardId,
+          stage_id: stageId,
+          last_stage_change_date: agora,
+          updated_at: agora,
+        })
+        .eq('id', dealId);
+      if (updateError) return { error: updateError as Error };
+
+      return { error: null };
+    } catch (e) {
+      return { error: e as Error };
     }
   },
 

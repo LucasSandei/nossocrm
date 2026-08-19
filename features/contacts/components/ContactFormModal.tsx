@@ -1,11 +1,15 @@
 import React, { useEffect, useId, useState } from 'react';
-import { X, Plus, ClipboardList, User } from 'lucide-react';
+import { X, Plus, ClipboardList, User, KanbanSquare, Trophy, XCircle } from 'lucide-react';
 import { Contact } from '@/types';
 import { ContactFormsPanel } from '@/features/forms/components/ContactFormsPanel';
 import { DebugFillButton } from '@/components/debug/DebugFillButton';
 import { fakeContact } from '@/lib/debug';
 import { FocusTrap, useFocusReturn } from '@/lib/a11y';
-import { useTags, useContactCustomFieldDefinitions } from '@/lib/query/hooks';
+import {
+  useTags,
+  useContactCustomFieldDefinitions,
+  useContactPipelinePositions,
+} from '@/lib/query/hooks';
 import {
   inputTypeFor,
   toInputCustomFieldValue,
@@ -73,6 +77,15 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
 
   const { data: availableTags = [] } = useTags();
   const { data: customFieldDefinitions = [] } = useContactCustomFieldDefinitions();
+
+  /**
+   * Em que funil e coluna este lead esta.
+   *
+   * Sem isso, descobrir onde o contato esta exige abrir board por board. So
+   * consulta para contato ja gravado; contato novo nao tem negocio.
+   */
+  const { data: pipelinePositions = [], isLoading: isLoadingPositions } =
+    useContactPipelinePositions(editingContact?.id);
 
   /**
    * Formulários só existem para contato já gravado — um contato novo ainda
@@ -202,6 +215,66 @@ export const ContactFormModal: React.FC<ContactFormModalProps> = ({
             className={`flex-col flex-1 min-h-0 ${activeTab === 'data' ? 'flex' : 'hidden'}`}
           >
             <div className="p-5 space-y-4 overflow-y-auto">
+              {/* Posicao no funil. Fica no topo porque e a primeira pergunta de
+                * quem abre um contato: onde esse lead esta agora. Somente
+                * leitura: mover e trabalho do card, no board. */}
+              {editingContact && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-white/5 dark:bg-white/5">
+                  <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase text-slate-400">
+                    <KanbanSquare size={12} aria-hidden="true" />
+                    Posição no funil
+                  </h3>
+
+                  {isLoadingPositions ? (
+                    <p className="text-sm text-slate-400">Carregando…</p>
+                  ) : pipelinePositions.length === 0 ? (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Este contato ainda não está em nenhum funil.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {pipelinePositions.map((pos) => (
+                        <li
+                          key={pos.dealId}
+                          className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm"
+                        >
+                          <span className="font-medium text-slate-900 dark:text-white">
+                            {pos.boardName}
+                          </span>
+                          <span className="text-slate-300 dark:text-slate-600" aria-hidden="true">
+                            ›
+                          </span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <span
+                              className={`h-2 w-2 rounded-full ${pos.stageColor || 'bg-slate-400'}`}
+                              aria-hidden="true"
+                            />
+                            <span className="text-slate-700 dark:text-slate-200">
+                              {pos.stageLabel}
+                            </span>
+                          </span>
+
+                          {pos.isWon && (
+                            <span className="inline-flex items-center gap-1 rounded bg-green-100 px-1.5 py-0.5 text-[10px] font-bold text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                              <Trophy size={10} aria-hidden="true" /> GANHO
+                            </span>
+                          )}
+                          {pos.isLost && (
+                            <span className="inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                              <XCircle size={10} aria-hidden="true" /> PERDIDO
+                            </span>
+                          )}
+
+                          <span className="ml-auto font-mono text-xs text-slate-500 dark:text-slate-400">
+                            {pos.title}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
               <div>
                 <label htmlFor="contact-name" className={LABEL_CLASS}>
                   Nome Completo <span aria-hidden="true">*</span>

@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Check, CheckCheck, ClipboardCheck, X } from 'lucide-react';
+import { Check, CheckCheck, ClipboardCheck, Pencil, X } from 'lucide-react';
 import {
   useApproveManySales,
   useReviewSaleApproval,
   useSaleApprovals,
+  useSyncPendingApprovalAmount,
 } from '@/lib/query/hooks';
+import { DealDetailModal } from '@/features/boards/components/Modals/DealDetailModal';
 import { useToast } from '@/context/ToastContext';
 import { Button } from '@/components/ui/button';
 import { formatBRL, formatDateTime } from '../lib/format';
@@ -53,6 +55,30 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({ monthKey }) => {
 
   const review = useReviewSaleApproval();
   const approveMany = useApproveManySales();
+  const syncPendingAmount = useSyncPendingApprovalAmount();
+
+  /**
+   * Negocio aberto para correcao a partir da fila.
+   *
+   * Reusa o modal do board em vez de um formulario proprio: e o mesmo negocio,
+   * e o admin costuma precisar corrigir mais que o valor (titulo, produtos,
+   * contato). Guardamos tambem se a aprovacao estava pendente, porque so nesse
+   * caso o valor corrigido pode reescrever o que vai contar na meta.
+   */
+  const [editing, setEditing] = useState<{ dealId: string; wasPending: boolean } | null>(null);
+
+  const handleCloseEditor = () => {
+    const alvo = editing;
+    setEditing(null);
+    if (!alvo?.wasPending) return;
+
+    // Espelha o valor so depois de fechar: durante a edicao o usuario pode
+    // digitar valores intermediarios que nao sao a correcao final.
+    syncPendingAmount.mutate(alvo.dealId, {
+      onError: (e) =>
+        addToast(`Negócio salvo, mas o valor da fila não atualizou: ${(e as Error).message}`, 'error'),
+    });
+  };
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -218,6 +244,24 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({ monthKey }) => {
                   </td>
                   <td className="px-5 py-3">
                     <div className="flex items-center justify-end gap-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setEditing({
+                            dealId: approval.dealId,
+                            wasPending: approval.status === 'pending',
+                          })
+                        }
+                        className="p-1.5 rounded-md text-slate-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+                        aria-label={`Editar ${approval.dealTitle ?? 'negócio'}`}
+                        title={
+                          approval.status === 'pending'
+                            ? 'Corrigir o negócio (o valor da fila acompanha)'
+                            : 'Abrir o negócio (valor já contabilizado não muda)'
+                        }
+                      >
+                        <Pencil size={18} />
+                      </button>
                       {approval.status !== 'approved' && (
                         <button
                           type="button"
@@ -250,6 +294,12 @@ export const ApprovalsTab: React.FC<ApprovalsTabProps> = ({ monthKey }) => {
           </table>
         </div>
       )}
+
+      <DealDetailModal
+        dealId={editing?.dealId ?? null}
+        isOpen={!!editing}
+        onClose={handleCloseEditor}
+      />
 
       {approvals.length > 0 && (
         <div className="px-5 py-3 border-t border-slate-100 dark:border-white/5 flex justify-between text-sm">
