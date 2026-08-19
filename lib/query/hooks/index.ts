@@ -15,6 +15,8 @@ export {
   useCreateDealWithContact,
   useUpdateDeal,
   useUpdateDealStatus,
+  useMoveDealToBoard,
+  useContactPipelinePositions,
   useDeleteDeal,
   useAddDealItem,
   useRemoveDealItem,
@@ -305,5 +307,6 @@ export {
   useDealApproval,
   useReviewSaleApproval,
   useApproveManySales,
+  useSyncPendingApprovalAmount,
   useApprovedSales,
 } from './useGoalsQuery';

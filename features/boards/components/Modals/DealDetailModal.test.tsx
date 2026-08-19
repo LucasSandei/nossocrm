@@ -34,6 +34,7 @@ vi.mock('@/context/ToastContext', () => ({
 
 vi.mock('@/lib/query/hooks', () => ({
   useMoveDealSimple: () => ({ moveDeal: vi.fn() }),
+  useMoveDealToBoard: () => ({ mutate: vi.fn(), isPending: false }),
   useDealApproval: () => ({ data: null, isLoading: false }),
   useContacts: () => ({ data: [], isLoading: false }),
   useActivities: () => ({ data: [], isLoading: false }),

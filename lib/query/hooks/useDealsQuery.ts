@@ -13,6 +13,7 @@ import { queryKeys, DEALS_VIEW_KEY } from '../index';
 import { dealsService, contactsService, companiesService, boardStagesService } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import type { Deal, DealView, DealItem, Contact } from '@/types';
+import type { DealPipelinePosition } from '@/lib/supabase/deals';
 
 // ============ QUERY HOOKS ============
 
@@ -430,6 +431,81 @@ export const useUpdateDeal = () => {
       // NÃO fazer invalidateQueries para deals - Realtime gerencia a sincronização
       // Apenas invalidar o detalhe específico se necessário
       queryClient.invalidateQueries({ queryKey: queryKeys.deals.detail(id) });
+    },
+  });
+};
+
+/**
+ * Em que funil e coluna um contato esta.
+ *
+ * Habilitada so quando ha contato: abrir o modal de um contato novo, ainda sem
+ * id, nao deve disparar consulta.
+ */
+export const useContactPipelinePositions = (contactId: string | undefined) => {
+  return useQuery<DealPipelinePosition[]>({
+    queryKey: [...queryKeys.deals.all, 'pipelinePositions', contactId ?? ''],
+    queryFn: () => dealsService.getPipelinePositionsByContact(contactId!),
+    enabled: !!contactId,
+    staleTime: 30 * 1000,
+  });
+};
+
+/**
+ * Move um negocio para outro funil (board), na coluna escolhida.
+ *
+ * Fica separado de `useMoveDeal` porque aquele resolve automacoes de etapa
+ * dentro do mesmo board (linked stage, ganho/perdido, next board). Trocar de
+ * funil e uma correcao de rota: o negocio estava no lugar errado. Nao dispara
+ * essas automacoes de proposito.
+ *
+ * A lista de destinos vem de `useBoards`, que a RLS ja filtra pelos funis
+ * visiveis ao usuario; o service revalida a coluna no banco.
+ */
+export const useMoveDealToBoard = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      dealId,
+      boardId,
+      stageId,
+    }: {
+      dealId: string;
+      boardId: string;
+      stageId: string;
+    }) => {
+      const { error } = await dealsService.moveToBoard({ dealId, boardId, stageId });
+      if (error) throw error;
+      return { dealId, boardId, stageId };
+    },
+    onMutate: async ({ dealId, boardId, stageId }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.deals.all });
+
+      const previousDeals = queryClient.getQueryData<DealView[]>(DEALS_VIEW_KEY);
+
+      queryClient.setQueryData<DealView[]>(DEALS_VIEW_KEY, (old = []) =>
+        old.map(deal =>
+          deal.id === dealId
+            ? {
+              ...deal,
+              boardId,
+              status: stageId,
+              lastStageChangeDate: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+            : deal
+        )
+      );
+
+      return { previousDeals };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previousDeals) {
+        queryClient.setQueryData(DEALS_VIEW_KEY, context.previousDeals);
+      }
+    },
+    onSettled: (_data, _error, { dealId }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.deals.detail(dealId) });
     },
   });
 };

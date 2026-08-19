@@ -289,6 +289,21 @@ export function useReviewSaleApproval() {
   });
 }
 
+/**
+ * Reflete na fila o valor corrigido de um negocio ainda pendente.
+ *
+ * Chamado quando o admin fecha a edicao vinda da tela de aprovacao. So mexe em
+ * pendentes: aprovadas e rejeitadas mantem o snapshot.
+ */
+export function useSyncPendingApprovalAmount() {
+  const invalidate = useInvalidateGoals();
+
+  return useMutation({
+    mutationFn: (dealId: string) => goalsService.syncPendingApprovalAmount(dealId),
+    onSettled: invalidate,
+  });
+}
+
 export function useApproveManySales() {
   const invalidate = useInvalidateGoals();
 

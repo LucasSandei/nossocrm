@@ -591,6 +591,43 @@ export const goalsService = {
     if (error) throw error;
   },
 
+  /**
+   * Espelha o valor atual do deal na aprovacao, mas so enquanto ela esta
+   * pendente.
+   *
+   * `amount` e um snapshot proposital: uma venda ja aprovada nao pode mudar de
+   * valor, senao metas e comissoes de meses fechados se reescrevem sozinhas
+   * (ver COMMENT da coluna na migration). Pendente e outra historia: ainda nao
+   * contou em lugar nenhum, entao corrigir o negocio tem que corrigir o que
+   * vai contar. Sem isso o admin corrige o valor errado na tela e a meta
+   * continua somando o numero antigo, em silencio.
+   *
+   * O filtro por status vive no `.eq()`, nao no cliente: e o banco que decide.
+   */
+  async syncPendingApprovalAmount(dealId: string): Promise<void> {
+    const id = sanitizeUUID(dealId);
+    if (!id) return;
+
+    const client = getClient();
+
+    const { data: deal, error: dealError } = await client
+      .from('deals')
+      .select('value')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (dealError) throw dealError;
+    if (!deal) return;
+
+    const { error } = await client
+      .from('sale_approvals')
+      .update({ amount: Number((deal as { value: number | string }).value ?? 0) })
+      .eq('deal_id', id)
+      .eq('status', 'pending');
+
+    if (error) throw error;
+  },
+
   /** Aprova vários Ganhos de uma vez. */
   async approveMany(ids: string[]): Promise<void> {
     if (ids.length === 0) return;
